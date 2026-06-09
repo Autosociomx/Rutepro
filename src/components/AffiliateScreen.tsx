@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Product, Seller, AppConfig } from '../types';
 import { 
   ShieldCheck, 
   Coins, 
@@ -18,15 +19,7 @@ import {
 } from 'lucide-react';
 
 interface AffiliateScreenProps {
-  cfg: {
-    nombre: string;
-    letra: string;
-    subtitulo: string;
-    color_principal: string;
-    productos: any[];
-    vendedores: any[];
-    logo_url?: string;
-  };
+  cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
 }

@@ -1,29 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
+import { Product, Seller, AppConfig } from '../types';
+
+interface ClientSaleRecord {
+  id: string;
+  nombre: string;
+  productos: { id: string; nombre: string; pr: number; icono: string; q: number }[];
+  tipoCobro: 'efectivo' | 'credito';
+  total: number;
+  hora: string;
+  timestamp: number;
+}
 
 interface RepartidorScreenProps {
-  cfg: {
-    nombre: string;
-    letra: string;
-    subtitulo: string;
-    color_principal: string;
-    productos: any[];
-    vendedores: any[];
-    logo_url?: string;
-  };
+  cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
 }
 
 export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
-  const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
+  const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
   const [activeTab, setActiveTab] = useState<'ped' | 'cli' | 'cierr' | 'ia'>('ped');
   const [horaIni, setHoraIni] = useState<Date | null>(null);
 
   // Operational states
-  const [cliHoy, setCliHoy] = useState<any[]>([]);
-  const [cartRep, setCartRep] = useState<any[]>([]); // { id, nombre, pr, icono, q }
+  const [cliHoy, setCliHoy] = useState<ClientSaleRecord[]>([]);
+  const [cartRep, setCartRep] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
   const [tipoRep, setTipoRep] = useState<'efectivo' | 'credito'>('efectivo');
   
   // New Client Modal state
@@ -32,14 +35,14 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
   // Route AI Chat state
   const [chatInp, setChatInp] = useState('');
-  const [chatLogs, setChatLogs] = useState<any[]>([
+  const [chatLogs, setChatLogs] = useState<{ role: 'bot' | 'usr'; text: string }[]>([
     { role: 'bot', text: '¡Hola! Soy tu asistente de ruta. Puedo predecir las ventas del día, analizar tus metas de cobro o darte consejos para reducir devoluciones hoy. ¿En qué te ayudo?' }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-  const handleSelectSeller = (vnd: any) => {
+  const handleSelectSeller = (vnd: Seller) => {
     setSelectedSeller(vnd);
     setHoraIni(new Date());
     setCliHoy([]);
@@ -49,7 +52,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     triggerToast(`Ruta iniciada para ${vnd.nombre}`);
   };
 
-  const handleAddCartRep = (prod: any) => {
+  const handleAddCartRep = (prod: Product) => {
     const existing = cartRep.find(x => x.id === prod.id);
     if (existing) {
       setCartRep(cartRep.map(x => x.id === prod.id ? { ...x, q: x.q + 1 } : x));

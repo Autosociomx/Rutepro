@@ -101,3 +101,14 @@ export interface RutaMetric {
   gastos_total: number;
   liquido_final: number;
 }
+
+export interface AppConfig {
+  nombre: string;
+  letra: string;
+  subtitulo: string;
+  color_principal: string;
+  productos: Product[];
+  vendedores: Seller[];
+  logo_url?: string;
+}
+

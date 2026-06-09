@@ -1,44 +1,63 @@
 import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
+import { Product, Seller, Venta, VentaItem, AppConfig } from '../types';
 
 interface AdminScreenProps {
-  cfg: {
-    nombre: string;
-    letra: string;
-    subtitulo: string;
-    color_principal: string;
-    productos: any[];
-    vendedores: any[];
-    logo_url?: string;
-  };
+  cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
 }
 
 export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
   const [activeTab, setActiveTab] = useState<'res' | 'rutas' | 'alertas' | 'ia'>('res');
-  const [ventas, setVentas] = useState<any[]>([]);
+  const [ventas, setVentas] = useState<Venta[]>([]);
 
   // Asesor chat states
   const [chatInp, setChatInp] = useState('');
-  const [chatLogs, setChatLogs] = useState<any[]>([
+  const [chatLogs, setChatLogs] = useState<{ role: 'bot' | 'usr'; text: string }[]>([
     { role: 'bot', text: `¡Hola! Bienvenido al Asesor Financiero Inteligente de *${cfg.nombre}*. Puedo sumar tus ventas totales de hoy, decirte qué ruta va rindiendo mejor, informarte del ticket promedio o indicarte el nivel de efectivo acumulado en ruta. ¿Qué reporte deseas generar?` }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-  // Load and consolidate transaction logs
+  // Load and consolidate transaction logs directly from Firestore with real-time automatic telemetry synchronization
   useEffect(() => {
-    const loadTransactions = () => {
-      // Load sales recorded locally from this session/device
+    const q = query(collection(db, 'ventas'), orderBy('timestamp', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const salesFromDb: Venta[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        salesFromDb.push({
+          id: docSnap.id,
+          vendedorId: data.vendedorId || '',
+          vendedorNombre: data.vendedorNombre || '',
+          clienteId: data.clienteId || '',
+          clienteNombre: data.clienteNombre || '',
+          monto: Number(data.monto) || 0,
+          tipoCobro: data.tipoCobro === 'efectivo' ? 'efectivo' : 'crédito',
+          items: (data.items || []).map((it: any) => ({
+            id: it.id || '',
+            nombre: it.nombre || '',
+            q: Number(it.q) || 0,
+            pr: Number(it.pr) || 0,
+            ic: it.ic || it.icono || '📦'
+          })),
+          timestamp: data.timestamp || Date.now()
+        });
+      });
+
+      setVentas(salesFromDb);
+      // Keep local backup store in sync with active cloud logs
+      localStorage.setItem('rp_ventas', JSON.stringify(salesFromDb));
+    }, (error) => {
+      console.warn('Real-time sync paused or connection offline. Utilizing local transaction logs cache fallback:', error);
       const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
       setVentas(localSales);
-    };
+    });
 
-    loadTransactions();
-    // Auto-update every 10 seconds for real-time dashboard feel
-    const timer = setInterval(loadTransactions, 10000);
-    return () => clearInterval(timer);
+    return () => unsub();
   }, []);
 
   const handleRefrescar = () => {
@@ -64,7 +83,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     
     ventas.forEach((v) => {
       const itemsList = v.items || [];
-      itemsList.forEach((item: any) => {
+      itemsList.forEach((item: VentaItem) => {
         const prodName = item.nombre;
         if (!table[prodName]) {
           table[prodName] = { 
@@ -87,7 +106,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // Alerts logic
   const getAlerts = () => {
-    const alertsList: any[] = [];
+    const alertsList: { tipo: string; icono: string; titulo: string; sub: string }[] = [];
     
     // Check cash limits in routes
     cfg.vendedores.forEach((vendedor) => {

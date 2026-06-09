@@ -1,17 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { COLS } from '../data';
 import { LogoGenerator } from './LogoGenerator';
+import { Product, Seller, AppConfig } from '../types';
 
 interface ConfigScreenProps {
-  initialCfg: {
-    nombre: string;
-    letra: string;
-    subtitulo: string;
-    color_principal: string;
-    productos: any[];
-    vendedores: any[];
-  };
-  onSave: (newCfg: any) => void;
+  initialCfg: AppConfig;
+  onSave: (newCfg: AppConfig) => void;
   onGoBack: () => void;
 }
 
@@ -21,8 +15,8 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
   const [letra, setLetra] = useState(initialCfg.letra || 'M');
   const [subtitulo, setSubtitulo] = useState(initialCfg.subtitulo || 'App de ventas · RoutePro');
   const [colorPrincipal, setColorPrincipal] = useState(initialCfg.color_principal || '#C9822C');
-  const [productos, setProductos] = useState<any[]>(initialCfg.productos || []);
-  const [vendedores, setVendedores] = useState<any[]>(initialCfg.vendedores || []);
+  const [productos, setProductos] = useState<Product[]>(initialCfg.productos || []);
+  const [vendedores, setVendedores] = useState<Seller[]>(initialCfg.vendedores || []);
 
   // Custom Logo and Palette Extractor states
   const [logoUrl, setLogoUrl] = useState(initialCfg.logo_url || '');

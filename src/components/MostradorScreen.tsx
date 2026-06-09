@@ -1,30 +1,23 @@
 import React, { useState } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
+import { Product, Seller, AppConfig } from '../types';
 
 interface MostradorScreenProps {
-  cfg: {
-    nombre: string;
-    letra: string;
-    subtitulo: string;
-    color_principal: string;
-    productos: any[];
-    vendedores: any[];
-    logo_url?: string;
-  };
+  cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
 }
 
 export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [cartMos, setCartMos] = useState<any[]>([]); // { id, nombre, pr, icono, q }
+  const [cartMos, setCartMos] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
   const [paymentType, setPaymentType] = useState<'efectivo' | 'tarjeta'>('efectivo');
   const [showOptionsModal, setShowOptionsModal] = useState(false);
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-  const handleAddMos = (prod: any) => {
+  const handleAddMos = (prod: Product) => {
     const existing = cartMos.find(x => x.id === prod.id);
     if (existing) {
       setCartMos(cartMos.map(x => x.id === prod.id ? { ...x, q: x.q + 1 } : x));

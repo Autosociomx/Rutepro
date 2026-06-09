@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Product, Seller } from '../types';
 
 interface LandingScreenProps {
   cfg: {
@@ -6,8 +7,8 @@ interface LandingScreenProps {
     letra: string;
     subtitulo: string;
     color_principal: string;
-    productos: any[];
-    vendedores: any[];
+    productos: Product[];
+    vendedores: Seller[];
     logo_url?: string;
   };
   onGo: (screen: string) => void;

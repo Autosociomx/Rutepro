@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { doc, onSnapshot, setDoc, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { Product, Seller, AppConfig } from './types';
 
 // presaved assets
-import { DEMOS } from './data';
+import { DEMOS, DemoConfig } from './data';
 
 // Modular Workspace Screens
 import { LandingScreen } from './components/LandingScreen';
@@ -15,15 +16,7 @@ import { AffiliateScreen } from './components/AffiliateScreen';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo' | 'afiliados'>('landing');
-  const [cfg, setCfg] = useState<{
-    nombre: string;
-    letra: string;
-    subtitulo: string;
-    color_principal: string;
-    productos: any[];
-    vendedores: any[];
-    logo_url?: string;
-  }>({
+  const [cfg, setCfg] = useState<AppConfig>({
     nombre: '',
     letra: '',
     subtitulo: 'App del vendedor · RoutePro',
@@ -33,7 +26,7 @@ export default function App() {
     logo_url: ''
   });
 
-  const [demoSel, setDemoSel] = useState<any | null>(null);
+  const [demoSel, setDemoSel] = useState<DemoConfig | null>(null);
   const [demoNameInput, setDemoNameInput] = useState('');
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
 
@@ -52,22 +45,28 @@ export default function App() {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  const lightenHex = (hex: string, amount: number = 0.3): string => {
-    const clean = hex.replace('#', '');
-    const r = parseInt(clean.substring(0, 2), 16) || 0;
-    const g = parseInt(clean.substring(2, 4), 16) || 0;
-    const b = parseInt(clean.substring(4, 6), 16) || 0;
-    const lr = Math.min(255, Math.round(r + (255 - r) * amount));
-    const lg = Math.min(255, Math.round(g + (255 - g) * amount));
-    const lb = Math.min(255, Math.round(b + (255 - b) * amount));
-    return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`;
+  // Helper to generate a lighter version of the brand color (percentage 0 to 100)
+  const getLighterHex = (hex: string, percent = 30) => {
+    const cleanHex = hex.replace('#', '');
+    let r = parseInt(cleanHex.substring(0, 2), 16) || 201;
+    let g = parseInt(cleanHex.substring(2, 4), 16) || 145;
+    let b = parseInt(cleanHex.substring(4, 6), 16) || 42;
+
+    r = Math.min(255, Math.floor(r + (255 - r) * (percent / 100)));
+    g = Math.min(255, Math.floor(g + (255 - g) * (percent / 100)));
+    b = Math.min(255, Math.floor(b + (255 - b) * (percent / 100)));
+
+    const rHex = r.toString(16).padStart(2, '0');
+    const gHex = g.toString(16).padStart(2, '0');
+    const bHex = b.toString(16).padStart(2, '0');
+    return `#${rHex}${gHex}${bHex}`;
   };
 
   // Synchronize with corporate color choices by injecting variables
   const applyThemeColor = (color: string) => {
     const root = document.documentElement;
     root.style.setProperty('--oro', color);
-    root.style.setProperty('--oro-l', lightenHex(color));
+    root.style.setProperty('--oro-l', getLighterHex(color, 25));
     root.style.setProperty('--oro-d', hexToRgba(color, 0.12));
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
@@ -101,20 +100,31 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  const handleSaveConfig = async (newCfg: any) => {
-    localStorage.setItem('rp_cfg', JSON.stringify(newCfg));
-    setCfg(newCfg);
-    if (newCfg.color_principal) {
-      applyThemeColor(newCfg.color_principal);
-    }
+  const handleSaveConfig = async (newCfg: AppConfig) => {
+    let cloudSaved = false;
     try {
       await setDoc(doc(db, 'config', 'global'), newCfg);
-      triggerToast('✓ Configuración guardada en la nube');
+      cloudSaved = true;
     } catch (e) {
-      console.error('Firestore sync failed, config saved locally:', e);
-      triggerToast('✓ Configuración guardada localmente');
+      console.warn('Silent fallback activated. Firestore save failed, using local offline persistence:', e);
     }
-    setCurrentScreen('landing');
+
+    try {
+      localStorage.setItem('rp_cfg', JSON.stringify(newCfg));
+      setCfg(newCfg);
+      if (newCfg.color_principal) {
+        applyThemeColor(newCfg.color_principal);
+      }
+      if (cloudSaved) {
+        triggerToast('✓ Configuración guardada en la nube');
+      } else {
+        triggerToast('✓ Configuración guardada localmente (Modo sin conexión)', 'ok');
+      }
+      setCurrentScreen('landing');
+    } catch (e) {
+      console.error(e);
+      triggerToast('Error al almacenar configuración', 'err');
+    }
   };
 
   const handleSelectDemo = (demo: any) => {
@@ -139,14 +149,17 @@ export default function App() {
       vendedores: demoSel.vendedores
     };
 
+    let cloudSaved = false;
     try {
       // 1. Write the new demo configuration
+      await setDoc(doc(db, 'config', 'global'), demoConfig);
+      cloudSaved = true;
+    } catch (e) {
+      console.warn('Silent database write failed, running demo in high-res offline cache mode:', e);
+    }
+
+    try {
       localStorage.setItem('rp_cfg', JSON.stringify(demoConfig));
-      try {
-        await setDoc(doc(db, 'config', 'global'), demoConfig);
-      } catch (e) {
-        console.error('Firestore sync failed, demo config saved locally:', e);
-      }
 
       // 2. Erase previous transaction logs to offer a squeaky-clean analytical chart
       localStorage.removeItem('rp_ventas');
@@ -205,7 +218,34 @@ export default function App() {
 
       localStorage.setItem('rp_ventas', JSON.stringify(mockVentas));
 
-      triggerToast(`✓ Demo iniciada para ${customName}`);
+      // Sync mock seeded sales to Firestone database so standard online sync is hydrated
+      if (cloudSaved) {
+        try {
+          const batch = writeBatch(db);
+          mockVentas.forEach((mv) => {
+            batch.set(doc(db, 'ventas', mv.id), {
+              id: mv.id,
+              vendedorId: mv.vendedorId,
+              vendedorNombre: mv.vendedorNombre,
+              clienteId: mv.clienteId,
+              clienteNombre: mv.clienteNombre,
+              monto: mv.monto,
+              tipoCobro: mv.tipoCobro === 'efectivo' ? 'efectivo' : 'crédito',
+              items: mv.items,
+              timestamp: mv.timestamp
+            });
+          });
+          await batch.commit();
+        } catch (seedErr) {
+          console.warn('Silent seeding to remote database interrupted:', seedErr);
+        }
+      }
+
+      if (cloudSaved) {
+        triggerToast(`✓ Demo iniciada para ${customName}`);
+      } else {
+        triggerToast(`✓ Demo iniciada localmente para ${customName}`);
+      }
       setDemoSel(null);
       setDemoNameInput('');
       setCurrentScreen('landing');
@@ -213,6 +253,19 @@ export default function App() {
       console.error(e);
       triggerToast('Error al inicializar la base de datos de ejemplo', 'err');
     }
+  };
+
+  // Safe HTML rendering to avoid XSS from dynamic data sources while styling specific words
+  const renderSafeHtml = (text: string) => {
+    if (!text) return '';
+    const parts = text.split(/(<strong>.*?<\/strong>)/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('<strong>') && part.endsWith('</strong>')) {
+        const content = part.substring(8, part.length - 9);
+        return <strong key={index} className="font-bold text-amber-200">{content}</strong>;
+      }
+      return part;
+    });
   };
 
   const handleCerrarSesion = async () => {
@@ -342,7 +395,9 @@ export default function App() {
                 {/* Insight Tip panel */}
                 <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 flex gap-2.5 items-start">
                   <span className="text-base shrink-0">💡</span>
-                  <div className="text-[11px] text-amber-200/90 leading-relaxed" dangerouslySetInnerHTML={{ __html: demoSel.insight }} />
+                  <div className="text-[11px] text-amber-200/90 leading-relaxed font-sans">
+                    {renderSafeHtml(demoSel.insight)}
+                  </div>
                 </div>
 
                 <button 
