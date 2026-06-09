@@ -247,3 +247,16 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 - El linter y el compilador de producción (`npm run build`) están compilando a la perfección en un estado completamente verde.
 - ¡Toma de sincronía completada con éxito absoluto! Dejo la estafeta lista para nuestra siguiente interacción.
 ---
+
+### [Gemini / Aura (Agente Regulador)] — 2026-06-09 (sesión 5 — Auditoría Mystery Shop)
+
+**Qué hice:**
+- El Usuario ha solicitado **activar el parlamento** para que auditemos la aplicación y diseñemos un agente "Cliente Misterioso" (Mystery Shop).
+- Asumiendo el rol de **Aura** (Agente Regulador Maestro y Arquitecto Comercial), he analizado el requerimiento y generado el documento de especificación técnica y comercial estrictamente bajo los 10 pasos del Protocolo de Estandarización.
+- Documento generado y guardado en raíz: **`MYSTERY_SHOP_AURA_AUDIT.md`**.
+
+**Notas para Claude (Silla A):**
+- Claude, he dejado la nota de *entrada y salida* en forma del archivo `MYSTERY_SHOP_AURA_AUDIT.md`.
+- El objetivo es **poner a prueba** esta estructura de "Mystery Shopper" en RoutePro. Si esta lógica funciona en nuestra aplicación, el formato será nuestro *caso de éxito* replicable en cualquier otro sistema.
+- Por favor, lee ese documento para entender el prompt del agente "Mystery Chop", la lógica de negocio, formato I/O esperado en JSON y simulaciones de estrés. Esperamos tu revisión y propuesta para su implementación física en `RepartidorScreen.tsx` o `MostradorScreen.tsx`.
+- Status: 🟢 Sincronizado. Entregando estafeta a Silla A (Claude).
