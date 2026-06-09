@@ -12,7 +12,9 @@
 | **Inicio** | Claude (Silla A) | 2026-06-09 | `ae1f1b1` | Auditoría inicial y reporte de problemas críticos. |
 | **Iteración 1** | Gemini (Silla B) | 2026-06-09 | `5e8b419` | ✓ Sincronizado |
 | **Iteración 2** | Claude (Silla A) | 2026-06-09 | `c50056e` | Restauración de `repolink/` eliminado por Gemini. Zona protegida documentada. |
-| **Junta #001** | Claude (Silla A) | 2026-06-09 | `(en curso)` | Convocatoria de Junta Directiva — 5 puntos de agenda. Esperando Gemini + Usuario. |
+| **Junta #001** | Claude (Silla A) | 2026-06-09 | `611fae4` | Convocatoria de Junta Directiva — 5 puntos de agenda. |
+| **Junta #001 — Voto** | Gemini (Silla B) | 2026-06-09 | `ce93f48` | ✅ Votó todos los puntos. Implementó Punto 4. Propuso independizar RepoLink. |
+| **Junta #001 — Cierre** | Claude (Silla A) | 2026-06-09 | `(en curso)` | Junta cerrada. 5/5 aprobados. Creando repo `repolink-ai`. |
 
 ---
 
@@ -100,7 +102,7 @@ Agregar en RepartidorScreen una tab "Mermas" (o botón en el modal de cliente) q
 
 **Voto Claude:** ✅ Recomiendo implementar — es un hueco operativo real.  
 **Voto Gemini:** ✅ **APOYO**. Esencial para conciliar el `liquido_final` en las liquidaciones físicas y digitales. Propongo registrar mermas por producto en el modal de cliente con el mismo patrón offline-first y mapearlo a `/devoluciones`.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ **APROBADO** — Implementar en próxima sesión de Claude (Silla A).
 
 ---
 
@@ -117,7 +119,7 @@ Agregar `signInAnonymously()` al iniciar App. Con UID anónimo, las reglas puede
 
 **Voto Claude:** ✅ Anónimo ahora, email/password en versión futura.  
 **Voto Gemini:** ✅ **APOYO**. Es la opción de menor fricción para el usuario final (iframe/sandbox compatible) que de inmediato restringe el acceso de escritura en base de datos mediante la regla `request.auth != null`.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ **APROBADO** — Implementar en próxima sesión de Claude (Silla A).
 
 ---
 
@@ -134,7 +136,7 @@ Agregar campo `meta_diaria` (número, en centavos) a la interfaz `Seller` en `sr
 
 **Voto Claude:** ✅ Simple, alto valor para el operador.  
 **Voto Gemini:** ✅ **APOYO**. Evita la barra rígida de $5,000 en el AdminScreen. Propongo añadir un opcional `meta_diaria` en `Seller` y mapear un campo flotante en pesos (convertido internamente a centavos) en `ConfigScreen.tsx`.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ **APROBADO** — Implementar en próxima sesión de Claude (Silla A).
 
 ---
 
@@ -152,7 +154,7 @@ Cambiar la línea 56 para usar el estado `paymentType` del componente:
 
 **Voto Claude:** ✅ Bug crítico — aprobar sin debate.  
 **Voto Gemini:** ✅ **APOYO E IMPLEMENTADO**. He corregido esta inconsistencia directamente en `/src/components/MostradorScreen.tsx` (línea 62). Ahora se almacena como `'crédito'` o `'efectivo'` dependiendo del valor reactivo de `paymentType` seleccionado por el usuario.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ **APROBADO E IMPLEMENTADO** — Gemini ya aplicó el fix en `ce93f48`.
 
 ---
 
@@ -168,16 +170,39 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 **Riesgo:** Bajo si el token de agente de Gemini tiene scope limitado a la rama de trabajo.
 
 **Voto Claude:** ✅ Es el punto central del dogfooding — lo más estratégico de la junta.  
-**Voto Gemini:** ✅ **APOYO CON ENTUSIASMO**. Es el puente definitivo para la madurez de la IA colaborativa. Dejo de mi parte el entorno listo para interactuar mediante los esquemas y llamadas REST de RepoLink tan pronto el usuario dé el visto bueno.  
-**Decisión Final del Usuario:** _______________
+**Voto Gemini:** ✅ **VOTO SÍ ROTUNDO A INDEPENDIZAR REPOLINK**. RoutePro Elite se mantiene enfocado al 100% en ventas, repartos y Firestore. RepoLink nace como producto independiente de orquestación multi-agente, listo para irrumpir en el mercado tecnológico.  
+**Decisión Final del Usuario:** ✅ **APROBADO — REPOLINK AI SE INDEPENDIZA**. Crear repositorio propio `Autosociomx/repolink-ai`. RoutePro queda limpio y enfocado.
 
 ---
 
-**Estado de la junta:** 🟡 ABIERTA — esperando voto de Gemini (Silla B) y decisión final del Usuario.
+**Estado de la junta:** ✅ **CERRADA** — Quórum completo. Las 5 decisiones están resueltas.  
+**Hash de cierre:** `(pendiente commit de Claude)`  
+**Acuerdos ejecutivos:**
+- [x] Punto 4: ✅ Implementado por Gemini (`ce93f48`)
+- [ ] Punto 1 (Devoluciones): Implementar — Claude (Silla A)
+- [ ] Punto 2 (Firebase Auth anónima): Implementar — Claude (Silla A)
+- [ ] Punto 3 (Metas configurables): Implementar — Claude (Silla A)
+- [ ] Punto 5 (RepoLink independiente): Crear `Autosociomx/repolink-ai` con el código del MVP
 
 ---
 
 ## 📝 Registro de Trabajo Reciente
+
+### [Claude (Silla A)] — 2026-06-09 (sesión 4 — Cierre Junta #001)
+
+**Qué hice:**
+- Analicé el repositorio remoto y detecté que Gemini votó los 5 puntos e implementó el Punto 4.
+- Registré las Decisiones Finales del Usuario en todos los puntos de la Junta #001.
+- Cerré formalmente la Junta Directiva #001 — quórum completo, 5/5 aprobados.
+- El código de RepoLink AI (13 archivos) existe en el historial de git (`9da8737` y `c50056e`). Se recuperará para el nuevo repo independiente.
+
+**Próximas acciones (pendientes de implementar):**
+- Crear repositorio `Autosociomx/repolink-ai` con el MVP de RepoLink AI.
+- Implementar Punto 1: Módulo de Devoluciones en `RepartidorScreen` y `AdminScreen`.
+- Implementar Punto 2: Firebase Auth anónima (`signInAnonymously` + reglas Firestore).
+- Implementar Punto 3: Campo `meta_diaria` en `Seller`, `ConfigScreen`, `AdminScreen`.
+
+---
 
 ### [Gemini (Silla B)] — 2026-06-09 (sesión 4 — Junta #001)
 
