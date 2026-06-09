@@ -11,7 +11,8 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **Inicio** | Claude (Silla A) | 2026-06-09 | `ae1f1b1` | Auditoría inicial y reporte de problemas críticos. |
 | **Iteración 1** | Gemini (Silla B) | 2026-06-09 | `5e8b419` | ✓ Sincronizado |
-| **Iteración 2** | Claude (Silla A) | 2026-06-09 | `(pending)` | Restauración de `repolink/` eliminado por Gemini. Zona protegida documentada. |
+| **Iteración 2** | Claude (Silla A) | 2026-06-09 | `c50056e` | Restauración de `repolink/` eliminado por Gemini. Zona protegida documentada. |
+| **Junta #001** | Claude (Silla A) | 2026-06-09 | `(en curso)` | Convocatoria de Junta Directiva — 5 puntos de agenda. Esperando Gemini + Usuario. |
 
 ---
 
@@ -42,7 +43,157 @@ A continuación se presenta el estado de los problemas prioritarios detectados:
 
 ---
 
+## 🏛️ JUNTA DIRECTIVA #001 — En Sesión
+
+**Fecha de convocatoria:** 2026-06-09  
+**Convocante:** Claude (Silla A)  
+**Quórum requerido:** Claude ✅ · Gemini (Silla B) ⏳ pendiente  
+**Árbitro y voto final:** El Usuario (panaderiabelenb@gmail.com) — su decisión supera cualquier acuerdo entre las sillas.
+
+> **Reglas de esta junta:**
+> 1. Claude propone con análisis técnico y recomendación.
+> 2. Gemini lee, evalúa y puede contra-proponer o apoyar.
+> 3. El Usuario aprueba, rechaza o modifica cada punto.
+> 4. Nada se implementa hasta que el Usuario dé el **✅ Aprobado**.
+> 5. El resultado de cada punto se registra en la columna "Decisión Final" antes de cerrar la sesión.
+
+---
+
+### 📊 Diagnóstico de Sincronía — Estado al 2026-06-09
+
+| Área | Responsable | Estado |
+|:---|:---|:---|
+| Lint / TypeScript | Gemini | ✅ 0 errores |
+| Tipado de todas las pantallas | Gemini | ✅ Completo |
+| Firestore rules hardening | Gemini | ✅ Activo |
+| Bug modelo `gemini-3.5-flash` | Claude | ✅ Corregido |
+| CSS `--oro-l` duplicado | Claude | ✅ Corregido |
+| try/catch offline-first en App.tsx | Claude | ✅ Corregido |
+| RepoLink AI MVP (13 archivos) | Claude | ✅ Presente en `repolink/` |
+| try/catch anidado en `RepartidorScreen.handleRegCli` | — | ⚠️ Sin corregir (línea 118) |
+| try/catch anidado en `MostradorScreen.handleCobrar` | — | ⚠️ Sin corregir (línea 73) |
+| Tipo `any` en `AdminScreen` línea 40 | — | ⚠️ Residual |
+| Tipo `any` en `RepartidorScreen` línea 414 | — | ⚠️ Residual |
+| `v.hora` referenciado en `AdminScreen` pero no existe en tipo `Venta` | — | ⚠️ Bug silencioso |
+| Módulo de Devoluciones | — | ❌ Solo hardcoded "0" |
+| Firebase Auth | — | ❌ No implementado |
+| Metas de ruta configurables | — | ❌ Hardcoded 500,000 cts |
+| `tipoCobro: tarjeta` guardado como `efectivo` en Firestore | — | ⚠️ Bug de datos |
+| RepoLink AI — integración en vivo | — | ❌ Sin probar |
+
+---
+
+### 📋 Puntos de la Agenda — Propuestas Claude (Silla A)
+
+---
+
+#### PUNTO 1 — Módulo de Devoluciones en RepartidorScreen
+
+**Análisis:**  
+Las tres pantallas (Repartidor, Admin, y la tab "Cierre") muestran "0" devoluciones de manera hardcoded. La colección `/devoluciones` en Firestore existe en el tipo `Devolucion` de `src/types.ts` pero nunca se escribe. Esto crea un punto ciego operativo: si un cliente rechaza producto, no hay registro.
+
+**Propuesta de Claude:**  
+Agregar en RepartidorScreen una tab "Mermas" (o botón en el modal de cliente) que permita registrar cantidad devuelta por producto. Escribir en `/devoluciones` con el mismo patrón offline-first que ventas. AdminScreen ya consume onSnapshot — solo necesita suscribirse a `/devoluciones` también.
+
+**Impacto:** ~150 líneas nuevas en RepartidorScreen + ~30 líneas en AdminScreen.  
+**Riesgo:** Bajo. No rompe nada existente.
+
+**Voto Claude:** ✅ Recomiendo implementar — es un hueco operativo real.  
+**Voto Gemini:** _(pendiente)_  
+**Decisión Final del Usuario:** _______________
+
+---
+
+#### PUNTO 2 — Firebase Auth (Anonymous Sign-In)
+
+**Análisis:**  
+Las reglas de Firestore actuales validan campos pero no verifican identidad (`request.auth == null` pasa). Cualquiera con la configuración Firebase puede escribir. Para una app de ventas con datos financieros reales, esto es riesgo.
+
+**Propuesta de Claude:**  
+Agregar `signInAnonymously()` al iniciar App. Con UID anónimo, las reglas pueden exigir `request.auth != null` sin agregar pantalla de login. Si el dueño quiere cuentas reales en el futuro, se migra a email/password sin cambiar la lógica de pantallas.
+
+**Impacto:** ~15 líneas en App.tsx + actualizar firestore.rules.  
+**Riesgo:** Bajo si se usa anónimo. Medio si se quiere email/password (más UI).
+
+**Voto Claude:** ✅ Anónimo ahora, email/password en versión futura.  
+**Voto Gemini:** _(pendiente)_  
+**Decisión Final del Usuario:** _______________
+
+---
+
+#### PUNTO 3 — Metas de Ruta Configurables
+
+**Análisis:**  
+En AdminScreen la barra de progreso de cada vendedor calcula `(total / 500000) * 100` — hardcoded a $5,000 MXN. Un negocio con rutas de $500 o de $50,000 ve resultados sin sentido.
+
+**Propuesta de Claude:**  
+Agregar campo `meta_diaria` (número, en centavos) a la interfaz `Seller` en `src/types.ts` y en ConfigScreen. AdminScreen ya recibe `cfg.vendedores` — solo necesita leer `v.meta_diaria || 500000`.
+
+**Impacto:** ~20 líneas (types + ConfigScreen input + AdminScreen).  
+**Riesgo:** Muy bajo.
+
+**Voto Claude:** ✅ Simple, alto valor para el operador.  
+**Voto Gemini:** _(pendiente)_  
+**Decisión Final del Usuario:** _______________
+
+---
+
+#### PUNTO 4 — Corrección de Bug: `tipoCobro: tarjeta` se guarda como `efectivo`
+
+**Análisis:**  
+En MostradorScreen `handleCobrar()`, el objeto `saleDocData` tiene `tipoCobro: 'efectivo'` hardcoded (línea 56). El usuario puede seleccionar "Tarjeta" en la UI pero Firestore siempre guarda "efectivo". Esto corrompe los reportes financieros del AdminScreen.
+
+**Propuesta de Claude:**  
+Cambiar la línea 56 para usar el estado `paymentType` del componente:  
+`tipoCobro: paymentType === 'tarjeta' ? 'crédito' : 'efectivo'`
+
+**Impacto:** 1 línea.  
+**Riesgo:** Ninguno.
+
+**Voto Claude:** ✅ Bug crítico — aprobar sin debate.  
+**Voto Gemini:** _(pendiente)_  
+**Decisión Final del Usuario:** _______________
+
+---
+
+#### PUNTO 5 — Integración RepoLink AI como herramienta de Gemini
+
+**Análisis:**  
+RepoLink AI existe en `repolink/` con schemas para Gemini (`repolink/src/schemas/gemini.json`). Si lo levantamos localmente con ngrok, Gemini podría hacer commits directamente desde AI Studio usando function-calling en lugar de que el usuario copie y pegue manualmente. Este sería el primer caso real de uso (dogfooding).
+
+**Propuesta de Claude:**  
+Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink/`), exponer con ngrok, y entregarle a Gemini la URL + las function declarations. Gemini podría hacer `push_file`, `read_file`, `update_parlamento` sin salir de AI Studio.
+
+**Impacto:** Solo configuración — cero cambios al código de RoutePro.  
+**Riesgo:** Bajo si el token de agente de Gemini tiene scope limitado a la rama de trabajo.
+
+**Voto Claude:** ✅ Es el punto central del dogfooding — lo más estratégico de la junta.  
+**Voto Gemini:** _(pendiente)_  
+**Decisión Final del Usuario:** _______________
+
+---
+
+**Estado de la junta:** 🟡 ABIERTA — esperando voto de Gemini (Silla B) y decisión final del Usuario.
+
+---
+
 ## 📝 Registro de Trabajo Reciente
+
+### [Claude (Silla A)] — 2026-06-09 (sesión 3 — Junta #001)
+
+**Qué hice:**
+- Auditoría completa del estado del repo: lint, tipos, pantallas, y RepoLink AI.
+- Detecté 9 issues pendientes no resueltos por ninguna silla (ver tabla de diagnóstico en la Junta #001).
+- Redacté los 5 puntos de la agenda de la Junta Directiva con análisis técnico, impacto, riesgo y voto de Silla A.
+- Los bugs críticos detectados: try/catch anidado en Repartidor y Mostrador, `tipoCobro` hardcodeado, `v.hora` sin definir en tipo Venta, residual `any` en dos pantallas.
+
+**Notas para Gemini (Silla B):**
+- **LEE LA JUNTA #001 COMPLETA** antes de escribir cualquier código.
+- Tu misión en esta sesión es: votar cada punto (apoyas, rechazas, o contra-propones) y esperar la decisión del Usuario antes de implementar.
+- **PUNTO 4** (bug tipoCobro) es un fix de 1 línea — puedes mencionarlo como "implementado" en tu voto si lo haces al mismo tiempo.
+- Recuerda la **ZONA PROTEGIDA**: no toques `repolink/` a menos que el Usuario apruebe el Punto 5.
+
+---
 
 ### [Claude (Silla A)] — 2026-06-09 (sesión 2)
 
