@@ -52,11 +52,22 @@ export default function App() {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
+  const lightenHex = (hex: string, amount: number = 0.3): string => {
+    const clean = hex.replace('#', '');
+    const r = parseInt(clean.substring(0, 2), 16) || 0;
+    const g = parseInt(clean.substring(2, 4), 16) || 0;
+    const b = parseInt(clean.substring(4, 6), 16) || 0;
+    const lr = Math.min(255, Math.round(r + (255 - r) * amount));
+    const lg = Math.min(255, Math.round(g + (255 - g) * amount));
+    const lb = Math.min(255, Math.round(b + (255 - b) * amount));
+    return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`;
+  };
+
   // Synchronize with corporate color choices by injecting variables
   const applyThemeColor = (color: string) => {
     const root = document.documentElement;
     root.style.setProperty('--oro', color);
-    root.style.setProperty('--oro-l', color);
+    root.style.setProperty('--oro-l', lightenHex(color));
     root.style.setProperty('--oro-d', hexToRgba(color, 0.12));
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
@@ -91,23 +102,19 @@ export default function App() {
   }, []);
 
   const handleSaveConfig = async (newCfg: any) => {
-    try {
-      try {
-        await setDoc(doc(db, 'config', 'global'), newCfg);
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, 'config/global');
-      }
-      localStorage.setItem('rp_cfg', JSON.stringify(newCfg));
-      setCfg(newCfg);
-      if (newCfg.color_principal) {
-        applyThemeColor(newCfg.color_principal);
-      }
-      triggerToast('✓ Configuración guardada en la nube');
-      setCurrentScreen('landing');
-    } catch (e) {
-      console.error(e);
-      triggerToast('Error al almacenar configuración', 'err');
+    localStorage.setItem('rp_cfg', JSON.stringify(newCfg));
+    setCfg(newCfg);
+    if (newCfg.color_principal) {
+      applyThemeColor(newCfg.color_principal);
     }
+    try {
+      await setDoc(doc(db, 'config', 'global'), newCfg);
+      triggerToast('✓ Configuración guardada en la nube');
+    } catch (e) {
+      console.error('Firestore sync failed, config saved locally:', e);
+      triggerToast('✓ Configuración guardada localmente');
+    }
+    setCurrentScreen('landing');
   };
 
   const handleSelectDemo = (demo: any) => {
@@ -134,12 +141,12 @@ export default function App() {
 
     try {
       // 1. Write the new demo configuration
+      localStorage.setItem('rp_cfg', JSON.stringify(demoConfig));
       try {
         await setDoc(doc(db, 'config', 'global'), demoConfig);
       } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, 'config/global');
+        console.error('Firestore sync failed, demo config saved locally:', e);
       }
-      localStorage.setItem('rp_cfg', JSON.stringify(demoConfig));
 
       // 2. Erase previous transaction logs to offer a squeaky-clean analytical chart
       localStorage.removeItem('rp_ventas');
