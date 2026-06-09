@@ -37,6 +37,28 @@ export const COLS = [
 
 export const DEMOS: DemoConfig[] = [
   {
+    id: 'nayaritas',
+    icono: '🫓',
+    nombre: 'Tostadas Nayaritas',
+    subtitulo: 'Tostadas raspadas, cevicheras, salsas',
+    color: '#D97706',
+    businessName: 'Tostadas Nayaritas',
+    insight: 'El auténtico sabor tradicional de Nayarit. Automatiza rutas de tostadas, tortillas de nixtamal y salsas, optimizando mermas y previniendo quiebres de stock.',
+    productos: [
+      { id: 'NY1', icono: '🫓', nombre: 'Tostadas Raspadas (Paquete Familiar)', precio: 3800, unidad: 'pac' },
+      { id: 'NY2', icono: '🌮', nombre: 'Tostadas Cevicheras Crujientes', precio: 3500, unidad: 'pac' },
+      { id: 'NY3', icono: '🌽', nombre: 'Tortilla de Maíz Nixtamalizado (1 Kg)', precio: 2400, unidad: 'kg' },
+      { id: 'NY4', icono: '🌶️', nombre: 'Salsa Picante Huichol Tradicional', precio: 1900, unidad: 'pza' },
+      { id: 'NY5', icono: '🧀', nombre: 'Queso Cotija Seco Madurado', precio: 9500, unidad: 'kg' },
+      { id: 'NY6', icono: '📦', nombre: 'Caja Grande Tostadas Deshidratadas', precio: 18000, unidad: 'caja' }
+    ],
+    vendedores: [
+      { id: 'V_NY1', nombre: 'Juan Pablo Díaz', rol: 'repartidor', ruta: 'Ruta Costa y Huajicori' },
+      { id: 'V_NY2', nombre: 'Alondra Bañales', rol: 'repartidor', ruta: 'Ruta Miramar y San Blas' },
+      { id: 'V_NY3', nombre: 'Estela Martínez', rol: 'cajero', ruta: 'Mostrador Tepic Centro' }
+    ]
+  },
+  {
     id: 'pan',
     icono: '🍞',
     nombre: 'Panadería',

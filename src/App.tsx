@@ -17,12 +17,23 @@ import { AdminScreen } from './components/AdminScreen';
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('landing');
   const [cfg, setCfg] = useState<AppConfig>({
-    nombre: '',
-    letra: '',
-    subtitulo: 'App del vendedor · RoutePro',
-    color_principal: '#C9912A',
-    productos: [],
-    vendedores: [],
+    nombre: 'Tostadas Nayaritas',
+    letra: 'TN',
+    subtitulo: 'Tostadas raspadas, cevicheras, salsas',
+    color_principal: '#D97706',
+    productos: [
+      { id: 'NY1', icono: '🫓', nombre: 'Tostadas Raspadas (Fam.)', precio: 3800, unidad: 'pac' },
+      { id: 'NY2', icono: '🌮', nombre: 'Tostadas Cevicheras Crujientes', precio: 3500, unidad: 'pac' },
+      { id: 'NY3', icono: '🌽', nombre: 'Tortilla de Maíz kg', precio: 2400, unidad: 'kg' },
+      { id: 'NY4', icono: '🌶️', nombre: 'Salsa Picante Huichol', precio: 1900, unidad: 'pza' },
+      { id: 'NY5', icono: '🧀', nombre: 'Queso Cotija Seco kg', precio: 9500, unidad: 'kg' },
+      { id: 'NY6', icono: '📦', nombre: 'Caja Grande Deshidratadas', precio: 18000, unidad: 'caja' }
+    ],
+    vendedores: [
+      { id: 'V_NY1', nombre: 'Juan Pablo Díaz', rol: 'repartidor', ruta: 'Ruta Costa y Huajicori' },
+      { id: 'V_NY2', nombre: 'Alondra Bañales', rol: 'repartidor', ruta: 'Ruta Miramar y San Blas' },
+      { id: 'V_NY3', nombre: 'Estela Martínez', rol: 'cajero', ruta: 'Mostrador Tepic Centro' }
+    ],
     logo_url: ''
   });
 
@@ -81,16 +92,43 @@ export default function App() {
           applyThemeColor(cloudData.color_principal);
         }
       } else {
-        // Fallback to cache or empty defaults
+        // Fallback to cache or default to Tostadas Nayaritas
         const localCached = localStorage.getItem('rp_cfg');
         if (localCached) {
           try {
             const parsed = JSON.parse(localCached);
             setCfg(parsed);
-            applyThemeColor(parsed.color_principal || '#C9912A');
+            applyThemeColor(parsed.color_principal || '#D97706');
           } catch (e) {
             console.error('Local cache error', e);
           }
+        } else {
+          const defaultNayaritas: AppConfig = {
+            nombre: 'Tostadas Nayaritas',
+            letra: 'TN',
+            subtitulo: 'Tostadas raspadas, cevicheras, salsas',
+            color_principal: '#D97706',
+            productos: [
+              { id: 'NY1', icono: '🫓', nombre: 'Tostadas Raspadas (Fam.)', precio: 3800, unidad: 'pac' },
+              { id: 'NY2', icono: '🌮', nombre: 'Tostadas Cevicheras Crujientes', precio: 3500, unidad: 'pac' },
+              { id: 'NY3', icono: '🌽', nombre: 'Tortilla de Maíz kg', precio: 2400, unidad: 'kg' },
+              { id: 'NY4', icono: '🌶️', nombre: 'Salsa Picante Huichol', precio: 1900, unidad: 'pza' },
+              { id: 'NY5', icono: '🧀', nombre: 'Queso Cotija Seco kg', precio: 9500, unidad: 'kg' },
+              { id: 'NY6', icono: '📦', nombre: 'Caja Grande Deshidratadas', precio: 18000, unidad: 'caja' }
+            ],
+            vendedores: [
+              { id: 'V_NY1', nombre: 'Juan Pablo Díaz', rol: 'repartidor', ruta: 'Ruta Costa y Huajicori' },
+              { id: 'V_NY2', nombre: 'Alondra Bañales', rol: 'repartidor', ruta: 'Ruta Miramar y San Blas' },
+              { id: 'V_NY3', nombre: 'Estela Martínez', rol: 'cajero', ruta: 'Mostrador Tepic Centro' }
+            ],
+            logo_url: ''
+          };
+          setDoc(doc(db, 'config', 'global'), defaultNayaritas)
+            .then(() => console.log('Successfully auto-seeded blank database with Tostadas Nayaritas'))
+            .catch(e => console.warn('Could not auto-seed cloud config:', e));
+          localStorage.setItem('rp_cfg', JSON.stringify(defaultNayaritas));
+          setCfg(defaultNayaritas);
+          applyThemeColor(defaultNayaritas.color_principal);
         }
       }
     }, (error) => {
@@ -350,6 +388,8 @@ export default function App() {
           cfg={cfg} 
           onGo={(screen: any) => setCurrentScreen(screen)} 
           onCerrarSesion={handleCerrarSesion}
+          onSaveConfig={handleSaveConfig}
+          triggerToast={triggerToast}
         />
       )}
 

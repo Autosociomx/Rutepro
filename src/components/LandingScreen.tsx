@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Seller } from '../types';
+import { Product, Seller, AppConfig } from '../types';
 
 interface LandingScreenProps {
   cfg: {
@@ -13,10 +13,83 @@ interface LandingScreenProps {
   };
   onGo: (screen: string) => void;
   onCerrarSesion: () => void;
+  onSaveConfig: (newCfg: AppConfig) => Promise<void>;
+  triggerToast: (msg: string, type?: 'ok' | 'err') => void;
 }
 
-export const LandingScreen: React.FC<LandingScreenProps> = ({ cfg, onGo, onCerrarSesion }) => {
+export const LandingScreen: React.FC<LandingScreenProps> = ({ 
+  cfg, 
+  onGo, 
+  onCerrarSesion,
+  onSaveConfig,
+  triggerToast
+}) => {
   const hasSetup = cfg && cfg.productos && cfg.productos.length > 0;
+
+  const [fastUrl, setFastUrl] = useState('');
+  const [fastLoading, setFastLoading] = useState(false);
+
+  const handleExecuteFastConfig = async () => {
+    const rawUrl = fastUrl.trim();
+    if (!rawUrl) {
+      triggerToast('Por favor, ingresa una dirección de sitio web', 'err');
+      return;
+    }
+
+    setFastLoading(true);
+    triggerToast('🪄 Configurando tu negocio con IA. Espera un momento...');
+
+    const displayDomain = rawUrl.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+
+    try {
+      const response = await fetch('/api/generate-config-from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: rawUrl })
+      });
+
+      if (!response.ok) {
+        throw new Error('Fallo de respuesta del servidor de autoconfiguración');
+      }
+
+      const data = await response.json();
+      
+      const newConfig: AppConfig = {
+        nombre: data.nombre || 'Mi Negocio',
+        letra: data.letra || (data.nombre ? data.nombre[0].toUpperCase() : 'M'),
+        subtitulo: data.subtitulo || `Distribución y Ventas / de ${displayDomain}`,
+        color_principal: data.color_principal || '#C9912A',
+        productos: data.productos || [],
+        vendedores: data.vendedores || [],
+        logo_url: data.logo_url || ''
+      };
+
+      await onSaveConfig(newConfig);
+      triggerToast(`✓ ¡Negocio "${newConfig.nombre}" configurado con IA con éxito!`);
+      setFastUrl('');
+    } catch (e) {
+      console.error(e);
+      triggerToast('Error procesando el enlace. Usando configuración inteligente local...', 'err');
+      
+      const dummyConfig: AppConfig = {
+        nombre: displayDomain.charAt(0).toUpperCase() + displayDomain.slice(1) || 'Mi Negocio',
+        letra: (displayDomain.charAt(0) || 'M').toUpperCase(),
+        subtitulo: `Socio de ventas · ${displayDomain}`,
+        color_principal: '#C9912A',
+        productos: [
+          { id: 'PF1', icono: '📦', nombre: 'Servicio Standard', precio: 5000, unidad: 'pza' },
+          { id: 'PF2', icono: '🚚', nombre: 'Surtido Preferente', precio: 12000, unidad: 'caja' }
+        ],
+        vendedores: [
+          { id: 'VF1', nombre: 'Carlos Ortiz', rol: 'repartidor', ruta: 'Ruta Satélite' },
+          { id: 'VF2', nombre: 'Ana Gaby', rol: 'cajero', ruta: 'Sucursal Matriz' }
+        ]
+      };
+      await onSaveConfig(dummyConfig);
+    } finally {
+      setFastLoading(false);
+    }
+  };
 
   // New passcode/pin lock states for "Panel del Dueño" (Administración)
   const [showAdminLock, setShowAdminLock] = useState(false);
@@ -232,14 +305,44 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ cfg, onGo, onCerra
         </div>
 
         <div className="w-full space-y-3">
+          {/* Always show the Rapid AI Business Auto-Configuration Input so it is never hidden or disabled */}
+          <div className="w-full bg-[#140E20]/90 border border-purple-500/20 rounded-2xl p-4.5 text-left relative overflow-hidden mb-2">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex gap-2 items-center mb-1.5">
+              <span className="text-sm animate-pulse">🪄</span>
+              <div className="text-xs font-bold text-purple-300">Configuración Express con IA</div>
+            </div>
+            <p className="text-[11px] text-[#8A93A8] leading-relaxed mb-3.5">
+              Pega el sitio web de tu cliente (ej. <strong>nayaritas.mx</strong>) y Gemini generará su catálogo real, logo de marca, colores y rutas móviles de inmediato.
+            </p>
+            <div className="flex gap-2 bg-[#06080C]/80 border border-purple-500/15 rounded-xl p-1.5 focus-within:border-purple-300/30 transition-all">
+              <input 
+                type="text" 
+                value={fastUrl} 
+                onChange={(e) => setFastUrl(e.target.value)} 
+                disabled={fastLoading}
+                className="flex-1 bg-transparent px-2 py-1 text-xs focus:outline-none placeholder-purple-300/30 text-white disabled:opacity-50"
+                placeholder="Ej: pasteleria.com o nayaritas.mx"
+              />
+              <button 
+                type="button"
+                onClick={handleExecuteFastConfig} 
+                disabled={fastLoading}
+                className="px-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 font-bold flex items-center justify-center shrink-0 active:scale-95 cursor-pointer text-white text-[10px] rounded-lg transition-all py-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {fastLoading ? 'Configurando...' : 'Crear con IA'}
+              </button>
+            </div>
+          </div>
+
           {!hasSetup ? (
             <>
               <button 
                 onClick={() => onGo('configuracion')} 
-                className="w-full py-3.5 px-6 font-semibold text-sm text-[#0B0E14] bg-gradient-to-r from-amber-500 to-amber-400 rounded-xl hover:brightness-110 active:scale-97 transition-all cursor-pointer shadow-lg shadow-amber-500/20 animate-pulse"
+                className="w-full py-3.5 px-6 font-semibold text-sm text-[#0B0E14] bg-gradient-to-r from-amber-500 to-amber-400 rounded-xl hover:brightness-110 active:scale-97 transition-all cursor-pointer shadow-lg shadow-amber-500/20"
                 style={{ backgroundImage: `linear-gradient(135deg, ${cfg.color_principal || '#C9912A'}, #E8B04A)` }}
               >
-                Configurar mi negocio →
+                Configuración Manual →
               </button>
               <button 
                 onClick={() => onGo('demo')} 
@@ -272,6 +375,16 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ cfg, onGo, onCerra
                   <span className="text-3xl text-[#EEF1F8]">🛒</span>
                   <span className="text-xs font-bold text-[#EEF1F8] block">Mostrador</span>
                   <span className="text-[9px] text-[#8A93A8]">Punto de venta</span>
+                </button>
+              </div>
+
+              {/* Reset/Edit manual buttons for complete user control */}
+              <div className="flex gap-2 justify-center pt-2">
+                <button 
+                  onClick={() => onGo('configuracion')} 
+                  className="text-xs text-[#8A93A8] hover:text-[#EEF1F8] underline cursor-pointer transition-colors"
+                >
+                  Modificar Configuración Manual
                 </button>
               </div>
             </div>
