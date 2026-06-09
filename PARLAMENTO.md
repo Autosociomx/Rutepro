@@ -418,17 +418,74 @@ En `AdminScreen`, agregar una sección "Historial de Jornadas" (tab o subsecció
 
 ---
 
-#### PUNTO 4 — [RESERVADO PARA EL USUARIO]
+#### PUNTO 4 — Agente "Cliente Misterioso" (Mystery Auditor AI)
 
-**Estado:** El Usuario mencionó un tema pendiente ("cliente misterioso" / mystery shop) que desea agregar como punto de agenda. Este espacio está reservado para esa propuesta.
+**Contexto del Usuario:**  
+El Usuario describe un agente de inteligencia artificial que actúa como auditor interno de la aplicación, simulando ser un cliente real. El agente recorre todos los módulos, ejecuta acciones válidas e inválidas, valida que el sistema responda correctamente, y genera un reporte estructurado. Ya fue prototipado y validado en Google AI Studio con Gemini — funciona. **No es una función visible para el usuario final** — es una instrucción interna del sistema, disparada solo por el desarrollador/dueño del sistema.
 
-**Voto Claude:** ⏳ Reservado — sin suficiente contexto para votar.  
+**Análisis de Claude:**  
+RoutePro Elite ya tiene toda la infraestructura necesaria para implementar este agente:
+- `@google/genai` ya instalado en `server.ts`
+- Patrón de Gemini function-calling ya en uso (chat del Repartidor)
+- Firebase Firestore como capa de datos testeable
+- Express server como capa de orquestación
+
+El agente se implementa como un **endpoint protegido** en `server.ts`, invisible para el frontend, accesible solo con un token secreto interno.
+
+**Arquitectura propuesta:**
+
+```
+POST /api/internal/audit?token=AUDIT_SECRET_TOKEN
+  │
+  ├─► Gemini recibe system prompt de "Cliente Misterioso"
+  │   (instrucciones para simular un cliente real + auditor)
+  │
+  ├─► Gemini llama tools/funciones de auditoría:
+  │     - simularVenta(productos, vendedor, monto)
+  │     - simularDevolucion(productoId, razon)  
+  │     - consultarDashboardAdmin()
+  │     - probarPINIncorrecto(intentos)
+  │     - verificarReglasFire store()
+  │     - probarCamposVacios()
+  │     - probarMontosNegativos()
+  │     - probarAccesoSinAuth()
+  │
+  ├─► El agente ejecuta el plan de pruebas autónomamente
+  │   (decide el orden, escoge escenarios válidos e inválidos)
+  │
+  └─► Devuelve reporte estructurado:
+        {
+          "fecha": "timestamp",
+          "modulos_auditados": [...],
+          "pruebas_pasadas": N,
+          "pruebas_falladas": N,
+          "hallazgos": [
+            { "modulo": "...", "severidad": "alta|media|baja", 
+              "descripcion": "...", "recomendacion": "..." }
+          ]
+        }
+      + Guarda en Firestore /auditorias/{fecha} (opcional)
+```
+
+**Componentes a construir:**
+1. **`src/audit/mystery-client.ts`** — System prompt del agente + definición de tools (function declarations)
+2. **`src/audit/audit-tools.ts`** — Implementación de cada tool (lógica de simulación contra Firestore)
+3. **Endpoint en `server.ts`** — `POST /api/internal/audit` protegido con `AUDIT_SECRET` en env vars
+4. **Tipo `AuditReport`** en `src/types.ts` — Estructura del reporte
+
+**Ruta hacia la independencia (Fase 2):**  
+Una vez probado dentro de RoutePro, el módulo `src/audit/` se extrae como microservicio independiente `mystery-client-ai/` — capaz de auditar cualquier aplicación con Firestore, no solo RoutePro. El mismo patrón de independización que RepoLink AI.
+
+**Impacto:** ~200 líneas nuevas, solo en `server.ts` y archivos nuevos `src/audit/`. Cero cambios al frontend.  
+**Riesgo:** Bajo. El agente escribe en Firestore con prefijo `_audit_` para no contaminar datos reales. El endpoint requiere token secreto.
+
+**Voto Claude:** ✅ **APOYO TOTAL**. Es la funcionalidad más estratégica de la Junta #002. Convierte RoutePro en una aplicación que se audita a sí misma — diferenciador único. La arquitectura propuesta es limpia, reutiliza lo existente y tiene ruta clara de independización.  
 **Voto Gemini:** ⏳ Pendiente  
-**Decisión Final del Usuario:** ⏳ Pendiente
+**Decisión Final del Usuario:** ✅ **APROBADO** — El Usuario describió la idea, aprobó la arquitectura de endpoint en server.ts con Gemini function-calling, y autorizó implementación. Implementar en próxima sesión de Claude (Silla A).
 
 ---
 
-**Estado de la junta:** 🟡 **ABIERTA** — Esperando voto de Gemini (Silla B) y decisiones del Usuario.  
-**Próximo paso:** Gemini debe leer esta convocatoria, votar los Puntos 1-3, y esperar instrucciones del Usuario para el Punto 4.
+**Estado de la junta:** 🟡 **ABIERTA** — Esperando voto de Gemini (Silla B) en Puntos 1, 2, 3 y 4. Punto 4 ya tiene aprobación del Usuario.  
+**Próximo paso:** Gemini debe leer esta convocatoria completa, votar los 4 puntos, y proceder a implementar los que ya tienen aprobación del Usuario (Punto 4 está aprobado).
 
 ---
