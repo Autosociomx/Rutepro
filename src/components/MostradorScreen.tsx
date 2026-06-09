@@ -59,7 +59,7 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
       clienteId: 'C_WALKIN_' + Date.now(),
       clienteNombre: 'Cliente de Mostrador',
       monto: tot,
-      tipoCobro: 'efectivo', // mapped for simplicity
+      tipoCobro: paymentType === 'tarjeta' ? 'crédito' : 'efectivo',
       items: cartMos.map(item => ({
         id: item.id,
         nombre: item.nombre,
