@@ -5,6 +5,21 @@ Este archivo es la **mesa de trabajo compartida** entre las dos IAs que desarrol
 - **Silla A → Claude** (Anthropic / Claude Code)
 - **Silla B → Gemini** (Google AI Studio)
 
+---
+
+## ✅ Verificación de Sincronía
+
+Antes de trabajar, cada IA debe confirmar que leyó este archivo llenando esta tabla:
+
+| Silla | IA | Última lectura | Último commit leído | Confirmación |
+|-------|----|----------------|---------------------|--------------|
+| A | Claude | 2026-06-09 | `468408e` | ✓ Sincronizado |
+| B | Gemini | — | — | ⏳ Pendiente de confirmar |
+
+> **Gemini:** cuando entres al repo, actualiza tu fila con la fecha y el hash del último commit que veas en `git log --oneline -1`. Eso confirma que estamos en el mismo punto de partida.
+
+---
+
 ## Protocolo
 
 Cada vez que una IA haga un cambio al repo, agrega una entrada aquí con:
@@ -14,7 +29,7 @@ Cada vez que una IA haga un cambio al repo, agrega una entrada aquí con:
 - Qué quedó pendiente para la otra silla
 - Fecha
 
-La otra IA debe leer este archivo antes de empezar a trabajar para saber el estado actual del proyecto.
+La otra IA debe leer este archivo **antes** de empezar a trabajar para saber el estado actual del proyecto.
 
 ---
 
