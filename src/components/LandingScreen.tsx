@@ -23,9 +23,6 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ cfg, onGo, onCerra
   const [adminPin, setAdminPin] = useState('');
   const [pinError, setPinError] = useState('');
 
-  // Custom modal state for Exiting Demo / Changing Business
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
-
   // Background Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -171,11 +168,6 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ cfg, onGo, onCerra
     onGo('admin');
   };
 
-  const handleConfirmExit = () => {
-    setShowExitConfirm(false);
-    onCerrarSesion();
-  };
-
   return (
     <div className="min-height-screen flex flex-col items-center justify-center px-6 py-12 text-center relative overflow-hidden bg-[#06080C] min-h-screen">
       {/* Dynamic Futuristic Avenue & Hyper Speed Cityscape Canvas */}
@@ -255,12 +247,6 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ cfg, onGo, onCerra
               >
                 Ver demo con datos de ejemplo
               </button>
-              <button 
-                onClick={() => onGo('afiliados')} 
-                className="w-full py-3.5 px-6 font-semibold text-sm text-yellow-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl active:scale-97 transition-all cursor-pointer flex items-center justify-center gap-2"
-              >
-                🤝 Planes y Sistema de Afiliados
-              </button>
             </>
           ) : (
             <div className="space-y-4 w-full">
@@ -286,29 +272,6 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ cfg, onGo, onCerra
                   <span className="text-3xl text-[#EEF1F8]">🛒</span>
                   <span className="text-xs font-bold text-[#EEF1F8] block">Mostrador</span>
                   <span className="text-[9px] text-[#8A93A8]">Punto de venta</span>
-                </button>
-              </div>
-
-
-
-              <div className="pt-4 flex flex-col gap-2">
-                <button 
-                  onClick={() => onGo('afiliados')} 
-                  className="w-full py-3 px-6 font-bold text-xs text-amber-300 bg-[#C9912A]/10 hover:bg-[#C9912A]/20 border border-amber-500/30 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  🤝 Planes y Esquemas de Distribución
-                </button>
-                <button 
-                  onClick={() => onGo('configuracion')} 
-                  className="w-full py-3 px-6 font-semibold text-xs text-[#8A93A8] bg-[#181D2B]/50 hover:bg-[#181D2B] border border-white/5 rounded-xl hover:text-[#EEF1F8] transition-all cursor-pointer"
-                >
-                  ⚙️ Editar configuración
-                </button>
-                <button 
-                  onClick={() => setShowExitConfirm(true)} 
-                  className="w-full py-2 px-6 font-semibold text-xs text-red-400 hover:text-red-300 transition-all cursor-pointer underline decoration-dotted"
-                >
-                  🚪 Cambiar de negocio / Salir
                 </button>
               </div>
             </div>
@@ -389,42 +352,6 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ cfg, onGo, onCerra
                 className="w-full py-2 rounded-lg text-xs font-semibold text-center text-[#3E4A60] hover:text-[#8A93A8] cursor-pointer transition-all"
               >
                 Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CUSTOM EXIT CONFIRMATION DIALOG / SALIR DE LA DEMO */}
-      {showExitConfirm && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-[#111520] border border-red-500/20 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl text-left">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🚪</span>
-              <div className="font-display font-bold text-base text-white">¿Salir de la Demostración?</div>
-            </div>
-            
-            <p className="text-xs text-[#8A93A8] leading-relaxed">
-              ¿Estás seguro de que deseas salir de <strong>{cfg.nombre || 'el negocio actual'}</strong>?
-            </p>
-            <p className="text-[11px] text-[#3E4A60] leading-relaxed">
-              Se limpiarán los registros de ventas locales y podrás seleccionar cualquier otro giro comercial o crear tu propio modelo de negocio.
-            </p>
-
-            <div className="flex gap-2.5 pt-3">
-              <button 
-                type="button"
-                onClick={() => setShowExitConfirm(false)}
-                className="flex-1 py-3 bg-[#181D2B] rounded-xl text-xs font-semibold text-[#8A93A8] hover:text-white cursor-pointer hover:bg-[#1F2638] active:scale-95 transition-all text-center"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="button"
-                onClick={handleConfirmExit}
-                className="flex-1 py-3 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-bold text-white cursor-pointer active:scale-95 transition-all text-center"
-              >
-                Sí, Salir y Cambiar
               </button>
             </div>
           </div>

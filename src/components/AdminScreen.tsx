@@ -1,25 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Product, Seller, Venta, VentaItem, Devolucion, AppConfig } from '../types';
+import { Product, Seller, Venta, VentaItem, AppConfig, Devolucion } from '../types';
 
 interface AdminScreenProps {
   cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
+  onGoConfig?: () => void;
+  onCerrarSesion?: () => void;
 }
 
-export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
-  const [activeTab, setActiveTab] = useState<'res' | 'rutas' | 'alertas' | 'ia'>('res');
+export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion }) => {
+  const [activeTab, setActiveTab] = useState<'res' | 'rutas' | 'alertas' | 'ia' | 'sys'>('res');
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [devoluciones, setDevoluciones] = useState<Devolucion[]>([]);
 
   // Asesor chat states
   const [chatInp, setChatInp] = useState('');
   const [chatLogs, setChatLogs] = useState<{ role: 'bot' | 'usr'; text: string }[]>([
-    { role: 'bot', text: `¡Hola! Bienvenido al Asesor Financiero Inteligente de *${cfg.nombre}*. Puedo sumar tus ventas totales de hoy, decirte qué ruta va rindiendo mejor, informarte del ticket promedio o indicarte el nivel de efectivo acumulado en ruta. ¿Qué reporte deseas generar?` }
+    { role: 'bot', text: `¡Hola! Soy tu Gerente Digital. Operando como un Cdis automatizado, controlo tu fuerza de ventas en tiempo real (ya sean 3, 15 o más de 20 repartidores). Puedo sumar tus ventas totales de hoy, decirte qué ruta va rindiendo mejor, informarte del ticket promedio o indicarte el nivel de efectivo acumulado en calle. ¿Qué reporte deseas generar?` }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -36,9 +39,10 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
           vendedorNombre: data.vendedorNombre || '',
           clienteId: data.clienteId || '',
           clienteNombre: data.clienteNombre || '',
+          clienteTipo: data.clienteTipo || '',
           monto: Number(data.monto) || 0,
           tipoCobro: data.tipoCobro === 'efectivo' ? 'efectivo' : 'crédito',
-          items: (data.items || []).map((it: any) => ({
+          items: (data.items || []).map((it: VentaItem) => ({
             id: it.id || '',
             nombre: it.nombre || '',
             q: Number(it.q) || 0,
@@ -61,25 +65,32 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     return () => unsub();
   }, []);
 
+  // Real-time Firestore subscription for Devoluciones/Mermas
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'devoluciones'), (snapshot) => {
-      const devs: Devolucion[] = [];
+    const q = query(collection(db, 'devoluciones'), orderBy('timestamp', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const devolsFromDb: Devolucion[] = [];
       snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        devs.push({
+        const data = docSnap.data();
+        devolsFromDb.push({
           id: docSnap.id,
-          vendedorId: d.vendedorId || '',
-          vendedorNombre: d.vendedorNombre || '',
-          clienteId: d.clienteId || '',
-          clienteNombre: d.clienteNombre || '',
-          productoId: d.productoId || '',
-          productoNombre: d.productoNombre || '',
-          cantidad: Number(d.cantidad) || 0,
-          timestamp: d.timestamp || Date.now()
+          vendedorId: data.vendedorId || '',
+          vendedorNombre: data.vendedorNombre || '',
+          clienteId: data.clienteId || '',
+          clienteNombre: data.clienteNombre || '',
+          productoId: data.productoId || '',
+          productoNombre: data.productoNombre || '',
+          cantidad: Number(data.cantidad) || 0,
+          timestamp: data.timestamp || Date.now()
         });
       });
-      setDevoluciones(devs);
-    }, console.warn);
+      setDevoluciones(devolsFromDb);
+      localStorage.setItem('rp_devoluciones_admin', JSON.stringify(devolsFromDb));
+    }, (error) => {
+      console.warn('Real-time devoluciones paused. Utilizing local cache fallback:', error);
+      const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones_admin') || '[]');
+      setDevoluciones(localDevols);
+    });
     return () => unsub();
   }, []);
 
@@ -208,7 +219,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             <div className="text-xs font-bold text-white truncate">{cfg.nombre} · Dueño</div>
             <div className="text-[10px] text-purple-400 tracking-wider flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-              <span>Consola Gerencial</span>
+              <span>Gerente Digital (Cdis)</span>
             </div>
           </div>
         </div>
@@ -221,30 +232,36 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       </div>
 
       {/* Tabs Menu Bar */}
-      <div className="grid grid-cols-4 gap-1 bg-[#0B0E14] border-b border-white/5 p-2 shrink-0">
+      <div className="flex overflow-x-auto no-scrollbar gap-1 bg-[#0B0E14] border-b border-white/5 p-2 shrink-0">
         <button 
           onClick={() => setActiveTab('res')} 
-          className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'res' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
+          className={`py-2 px-3 shrink-0 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'res' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
         >
           📊 Resumen
         </button>
         <button 
           onClick={() => setActiveTab('rutas')} 
-          className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'rutas' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
+          className={`py-2 px-3 shrink-0 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'rutas' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
         >
           🗺️ Rutas
         </button>
         <button 
           onClick={() => setActiveTab('alertas')} 
-          className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'alertas' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
+          className={`py-2 px-3 shrink-0 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'alertas' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
         >
           🔔 Alertas
         </button>
         <button 
           onClick={() => setActiveTab('ia')} 
-          className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'ia' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
+          className={`py-2 px-3 shrink-0 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'ia' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
         >
-          💬 Asesor IA
+          🧠 Gerente
+        </button>
+        <button 
+          onClick={() => setActiveTab('sys')} 
+          className={`py-2 px-3 shrink-0 text-[10px] font-bold uppercase tracking-wider rounded-lg select-none cursor-pointer transition-all ${activeTab === 'sys' ? 'bg-[#181D2B] text-[#E8B04A] border border-amber-500/10' : 'text-[#3E4A60]'}`}
+        >
+          ⚙️ Op's
         </button>
       </div>
 
@@ -333,8 +350,11 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                   ventas.slice(-5).reverse().map((v, i) => (
                     <div key={i} className="flex justify-between items-center gap-2 text-xs border-b border-white/5 pb-2 last:border-0 last:pb-0">
                       <div>
-                        <div className="font-bold text-white shrink-0 truncate max-w-[150px]">{v.clienteNombre || 'Cliente Ambulante'}</div>
-                        <div className="text-[10px] text-[#8A93A8] mt-0.5">{v.vendedorNombre} · {v.hora || 'Ahora'}</div>
+                        <div className="font-bold text-white shrink-0 truncate max-w-[150px] flex items-center gap-1.5">
+                          {v.clienteNombre || 'Cliente Ambulante'}
+                          {v.clienteTipo && <span className="bg-[#E8B04A]/10 text-[#E8B04A] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">{v.clienteTipo}</span>}
+                        </div>
+                        <div className="text-[10px] text-[#8A93A8] mt-0.5">{v.vendedorNombre} · {v.hora || new Date(v.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</div>
                       </div>
                       <span className="font-mono text-[#E8B04A] font-bold shrink-0">{formatPrice(v.monto)}</span>
                     </div>
@@ -349,7 +369,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
         {activeTab === 'rutas' && (
           <div className="space-y-3">
             <div className="bg-[#111520] border border-white/5 p-3.5 rounded-xl text-xs text-[#8A93A8] leading-relaxed">
-              Resumen geográfico e inventario reportado por cada vendedor activo.
+              Resumen geográfico e inventario. <strong className="text-purple-400">Escalabilidad (Cdis):</strong> El sistema actúa como un Gerente Digital automatizado. En producción, escala dinámicamente el despacho, asignación de inventario y liquidación para flotillas de 3, 9, 15, 20 o más repartidores simultáneamente en tiempo real.
             </div>
 
             <div className="space-y-3">
@@ -446,7 +466,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                   className={`flex ${log.role === 'usr' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div className={`p-3 rounded-2xl max-w-[85%] text-xs leading-relaxed text-left ${log.role === 'usr' ? 'bg-[#181D2B] text-white' : 'bg-purple-950/20 border border-purple-500/10 text-purple-200'}`}>
-                    {log.role === 'bot' && <span className="block text-[8px] font-mono text-purple-400 uppercase font-bold tracking-wider mb-1">RoutePro CFO AI</span>}
+                    {log.role === 'bot' && <span className="block text-[8px] font-mono text-purple-400 uppercase font-bold tracking-wider mb-1">Cdis · Gerente Digital</span>}
                     {log.text}
                   </div>
                 </div>
@@ -495,7 +515,76 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             </div>
           </div>
         )}
+        {/* PANEL: OP'S / CONFIGURACIÓN (SYS) */}
+        {activeTab === 'sys' && (
+          <div className="space-y-4 pt-2">
+            <div className="bg-[#111520] border border-white/5 p-4 rounded-xl space-y-4">
+              <div className="text-left">
+                <h3 className="font-display font-bold text-white text-sm">Control Operativo</h3>
+                <p className="text-[10px] text-[#8A93A8] mt-1 leading-relaxed">Solo los dueños o gerentes pueden editar el modelo de negocio, o alterar la ejecución de la plataforma.</p>
+              </div>
+              <div className="space-y-2">
+                <button 
+                  onClick={() => onGoConfig?.()} 
+                  className="w-full py-3 px-6 font-semibold text-xs text-[#8A93A8] bg-[#181D2B]/50 hover:bg-[#181D2B] border border-white/5 rounded-xl hover:text-[#EEF1F8] transition-all cursor-pointer text-left flex justify-between items-center"
+                >
+                  <span>⚙️ Editar configuración</span>
+                  <span className="text-[10px]">→</span>
+                </button>
+                <button 
+                  onClick={() => setShowExitConfirm(true)} 
+                  className="w-full py-3 px-6 font-semibold text-xs text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-xl transition-all cursor-pointer text-left flex justify-between items-center"
+                >
+                  <span>🚪 Cambiar de negocio / Salir</span>
+                  <span className="text-[10px]">→</span>
+                </button>
+              </div>
+            </div>
+            {/* Disclaimer */}
+            <div className="bg-[#181D2B]/30 border border-amber-500/20 p-3 rounded-lg flex gap-2 items-start mt-4">
+              <span className="text-amber-300 text-[10px]">⚡</span>
+              <span className="text-[10px] text-amber-500/90 leading-tight">La edición de configuración afectará las terminales de venta de toda la flotilla de manera instantánea vía telemetría.</span>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* CONFIRM EXIT DIALOG */}
+      {showExitConfirm && (
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+          <div className="bg-[#111520] border border-red-500/20 rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-5 text-center">
+            <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-2 text-2xl border border-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.15)]">
+              🚪
+            </div>
+            <div className="space-y-2">
+              <div className="font-display font-bold text-base text-white">¿Salir de la Demostración?</div>
+              <p className="text-[#8A93A8] text-xs leading-relaxed">
+                ¿Estás seguro de que deseas salir de <strong>{cfg.nombre || 'el negocio actual'}</strong>?
+                <br /><br />
+                <span className="text-red-400/80 font-medium">Se borrará toda la arquitectura actual y tu progreso no guardado. Volverás al setup inicial.</span>
+              </p>
+            </div>
+            
+            <div className="flex gap-2.5 pt-2">
+              <button 
+                onClick={() => setShowExitConfirm(false)}
+                className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#EEF1F8] border border-white/5 cursor-pointer active:scale-95 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  setShowExitConfirm(false);
+                  onCerrarSesion?.();
+                }}
+                className="flex-1 py-3 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-bold text-white cursor-pointer active:scale-95 transition-all text-center border-t border-red-400"
+              >
+                Sí, Salir y Cambiar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -9,6 +9,7 @@ export interface Product {
   precio: number; // Price in cents, e.g. 500 = $5.00
   icono?: string; // Emoji representing the product
   unidad: string; // 'kg', 'pza', 'lt', etc.
+  piezasPorCaja?: number; // Configurable quantity per box/package
   precioPorKg?: number; // fallback compatibility
 }
 
@@ -18,7 +19,7 @@ export interface Seller {
   rol: 'repartidor' | 'cajero' | 'ambos';
   ruta: string;
   meta_diaria?: number; // in cents, e.g. 500000 = $5,000.00
-  vehiculo?: string; // fallback compatibility
+  vehiculo?: string;
 }
 
 export interface Client {
@@ -36,6 +37,7 @@ export interface VentaItem {
   pr: number; // price in cents
   ic?: string; // product icon
   precio?: number; // fallback compatibility
+  icono?: string; // fallback compatibility
 }
 
 export interface Venta {
@@ -44,10 +46,12 @@ export interface Venta {
   vendedorNombre: string;
   clienteId: string;
   clienteNombre: string;
+  clienteTipo?: string;
   monto: number;
   tipoCobro: 'efectivo' | 'crédito';
   items: VentaItem[];
   timestamp: number;
+  hora?: string;
 }
 
 export interface Devolucion {
