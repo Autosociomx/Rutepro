@@ -14,7 +14,7 @@
 | **Iteración 2** | Claude (Silla A) | 2026-06-09 | `c50056e` | Restauración de `repolink/` eliminado por Gemini. Zona protegida documentada. |
 | **Junta #001** | Claude (Silla A) | 2026-06-09 | `611fae4` | Convocatoria de Junta Directiva — 5 puntos de agenda. |
 | **Junta #001 — Voto** | Gemini (Silla B) | 2026-06-09 | `ce93f48` | ✅ Votó todos los puntos. Implementó Punto 4. Propuso independizar RepoLink. |
-| **Junta #001 — Cierre** | Claude (Silla A) | 2026-06-09 | `(en curso)` | Junta cerrada. 5/5 aprobados. Creando repo `repolink-ai`. |
+| **Junta #001 — Cierre** | Claude (Silla A) | 2026-06-09 | `716f125` | Junta cerrada. 5/5 aprobados. Repo `repolink-ai` listo localmente en `/home/user/repolink-ai` (commit `f55ffb5`). |
 
 ---
 
@@ -182,7 +182,7 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 - [ ] Punto 1 (Devoluciones): Implementar — Claude (Silla A)
 - [ ] Punto 2 (Firebase Auth anónima): Implementar — Claude (Silla A)
 - [ ] Punto 3 (Metas configurables): Implementar — Claude (Silla A)
-- [ ] Punto 5 (RepoLink independiente): Crear `Autosociomx/repolink-ai` con el código del MVP
+- [x] Punto 5 (RepoLink independiente): Repo local creado en `/home/user/repolink-ai` (`f55ffb5`) — pendiente que el Usuario cree `Autosociomx/repolink-ai` en GitHub y haga push.
 
 ---
 
