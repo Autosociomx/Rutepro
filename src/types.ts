@@ -7,9 +7,10 @@ export interface Product {
   id: string;
   nombre: string;
   precio: number; // Price in cents, e.g. 500 = $5.00
-  icono?: string; // Emoji representing the product
-  unidad: string; // 'kg', 'pza', 'lt', etc.
-  piezasPorCaja?: number; // Configurable quantity per box/package
+  icono?: string;
+  unidad: string; // 'kg', 'pza', 'lt', 'gr', 'caja', 'pac', etc.
+  piezasPorCaja?: number;
+  vendePorMonto?: boolean; // if true, Mostrador shows peso-amount picker (ej: tortillas, carne)
   precioPorKg?: number; // fallback compatibility
 }
 
@@ -115,5 +116,8 @@ export interface AppConfig {
   productos: Product[];
   vendedores: Seller[];
   logo_url?: string;
+  tipo_negocio?: string; // 'pan'|'tort'|'agua'|'carn'|'dist'|'custom' — dataset enrichment
+  ciudad?: string;       // free text — 'Tijuana'|'CDMX'|'Monterrey' etc.
+  pin_admin?: string;
 }
 

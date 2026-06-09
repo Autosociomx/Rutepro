@@ -162,7 +162,8 @@ export default function App() {
       subtitulo: `Demo activa · ${demoSel.nombre}`,
       color_principal: demoSel.color,
       productos: demoSel.productos,
-      vendedores: demoSel.vendedores
+      vendedores: demoSel.vendedores,
+      tipo_negocio: demoSel.id
     };
 
     let cloudSaved = false;
@@ -198,47 +199,58 @@ export default function App() {
       const secondSaleId = 'S_MOCK_2';
       const now = Date.now();
 
+      const p0 = demoSel.productos[0];
+      const p2 = demoSel.productos[2];
+      const q0 = p0?.vendePorMonto ? 2.5 : 3;
+      const q2 = p2?.vendePorMonto ? 1.2 : 5;
+
       const mockVentas = [
         {
           id: firstSaleId,
+          tipo_negocio: demoSel.id,
           vendedorId: demoSel.vendedores[0]?.id || 'V1',
           vendedorNombre: demoSel.vendedores[0]?.nombre || 'Ana Ruiz',
           clienteId: 'C_MOCK_1',
           clienteNombre: 'Abarrotes El Tulipán',
-          monto: (demoSel.productos[0]?.precio || 1500) * 3, // quantity of 3
+          monto: Math.round((p0?.precio || 1500) * q0),
           tipoCobro: 'efectivo',
           items: [
             {
-              id: demoSel.productos[0]?.id || 'P1',
-              nombre: demoSel.productos[0]?.nombre || 'Item A',
-              q: 3,
-              pr: demoSel.productos[0]?.precio || 1500,
-              ic: demoSel.productos[0]?.icono || '📦'
+              id: p0?.id || 'P1',
+              nombre: p0?.nombre || 'Item A',
+              q: q0,
+              pr: p0?.precio || 1500,
+              ic: p0?.icono || '📦',
+              unidad: p0?.unidad || 'pza',
+              modo_venta: p0?.vendePorMonto ? 'por_monto' : 'por_cantidad'
             }
           ],
-          timestamp: now - 3600000, // 1 hour ago
-          prod_resumen: `${demoSel.productos[0]?.icono || '📦'}${demoSel.productos[0]?.nombre || 'Item'} (3x)`,
+          timestamp: now - 3600000,
+          prod_resumen: `${p0?.icono || '📦'}${p0?.nombre || 'Item'} (${q0}${p0?.unidad || 'x'})`,
           hora: new Date(now - 3600000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
         },
         {
           id: secondSaleId,
+          tipo_negocio: demoSel.id,
           vendedorId: demoSel.vendedores[1]?.id || 'V2',
           vendedorNombre: demoSel.vendedores[1]?.nombre || 'Pedro Leal',
           clienteId: 'C_MOCK_2',
           clienteNombre: 'Ricos Tacos Imperial',
-          monto: (demoSel.productos[2]?.precio || 2000) * 5, // quantity of 5
+          monto: Math.round((p2?.precio || 2000) * q2),
           tipoCobro: 'credito',
           items: [
             {
-              id: demoSel.productos[2]?.id || 'P3',
-              nombre: demoSel.productos[2]?.nombre || 'Item C',
-              q: 5,
-              pr: demoSel.productos[2]?.precio || 2000,
-              ic: demoSel.productos[2]?.icono || '🧁'
+              id: p2?.id || 'P3',
+              nombre: p2?.nombre || 'Item C',
+              q: q2,
+              pr: p2?.precio || 2000,
+              ic: p2?.icono || '🧁',
+              unidad: p2?.unidad || 'pza',
+              modo_venta: p2?.vendePorMonto ? 'por_monto' : 'por_cantidad'
             }
           ],
-          timestamp: now - 1800000, // 30 mins ago
-          prod_resumen: `${demoSel.productos[2]?.icono || '🧁'}${demoSel.productos[2]?.nombre || 'Item'} (5x)`,
+          timestamp: now - 1800000,
+          prod_resumen: `${p2?.icono || '🧁'}${p2?.nombre || 'Item'} (${q2}${p2?.unidad || 'x'})`,
           hora: new Date(now - 1800000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
         }
       ];
@@ -252,6 +264,7 @@ export default function App() {
           mockVentas.forEach((mv) => {
             batch.set(doc(db, 'ventas', mv.id), {
               id: mv.id,
+              tipo_negocio: mv.tipo_negocio,
               vendedorId: mv.vendedorId,
               vendedorNombre: mv.vendedorNombre,
               clienteId: mv.clienteId,

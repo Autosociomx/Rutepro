@@ -37,7 +37,7 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-  const needsPicker = (p: Product) => p.unidad === 'kg' || p.unidad === 'lt';
+  const needsPicker = (p: Product) => !!(p.vendePorMonto || p.unidad === 'kg' || p.unidad === 'lt');
 
   const handleAddMos = (prod: Product) => {
     if (needsPicker(prod)) {
@@ -142,6 +142,7 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
 
     const saleDocData = {
       id: saleId,
+      tipo_negocio: cfg.tipo_negocio || 'custom',
       vendedorId: 'v_mostrador',
       vendedorNombre: 'Mostrador local',
       clienteId: 'C_WALKIN_' + Date.now(),

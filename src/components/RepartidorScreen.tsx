@@ -172,6 +172,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     const ventaDocData = {
       id: saleId,
+      tipo_negocio: cfg.tipo_negocio || 'custom',
       vendedorId: selectedSeller!.id,
       vendedorNombre: selectedSeller!.nombre,
       clienteId: 'C_ROUTE_' + Date.now(),
