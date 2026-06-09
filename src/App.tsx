@@ -3,6 +3,7 @@ import { db, handleFirestoreError, OperationType, auth } from './firebase';
 import { signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
+import { syncLocalTransactions } from './utils/syncEngine';
 
 // presaved assets
 import { DEMOS, DemoConfig } from './data';
@@ -149,6 +150,36 @@ export default function App() {
       });
   }, []);
 
+  // Setup real-time background sync engine for offline operations
+  useEffect(() => {
+    // 1. Initial sync attempts
+    syncLocalTransactions().catch(e => console.warn('Offline sync background error:', e));
+
+    // 2. Sync whenever browser network state changes to online
+    const handleOnline = () => {
+      syncLocalTransactions().then((res) => {
+        if (res.ventasSincronizadas > 0 || res.devolucionesSincronizadas > 0) {
+          triggerToast(`✓ ¡Conexión restablecida! Sincronizados: ${res.ventasSincronizadas} ventas y ${res.devolucionesSincronizadas} devoluciones.`);
+        }
+      }).catch(e => console.warn('Online event sync error:', e));
+    };
+    window.addEventListener('online', handleOnline);
+
+    // 3. Periodic execution of syncing queue (every 12 seconds)
+    const interval = setInterval(() => {
+      syncLocalTransactions().then((res) => {
+        if (res.ventasSincronizadas > 0 || res.devolucionesSincronizadas > 0) {
+          triggerToast(`✓ Sincronización automática: ${res.ventasSincronizadas} ventas y ${res.devolucionesSincronizadas} mermas subidas.`);
+        }
+      }).catch(e => console.warn('Periodic sync failure:', e));
+    }, 12000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      clearInterval(interval);
+    };
+  }, []);
+
   const handleSaveConfig = async (newCfg: AppConfig) => {
     let cloudSaved = false;
     try {
@@ -226,85 +257,14 @@ export default function App() {
       setCfg(demoConfig);
       applyThemeColor(demoSel.color);
 
-      // Seed 2 mock historical vector sales so dashboard displays gorgeous content on first open
-      const firstSaleId = 'S_MOCK_1';
-      const secondSaleId = 'S_MOCK_2';
-      const now = Date.now();
-
-      const mockVentas = [
-        {
-          id: firstSaleId,
-          vendedorId: demoSel.vendedores[0]?.id || 'V1',
-          vendedorNombre: demoSel.vendedores[0]?.nombre || 'Ana Ruiz',
-          clienteId: 'C_MOCK_1',
-          clienteNombre: 'Abarrotes El Tulipán',
-          monto: (demoSel.productos[0]?.precio || 1500) * 3, // quantity of 3
-          tipoCobro: 'efectivo',
-          items: [
-            {
-              id: demoSel.productos[0]?.id || 'P1',
-              nombre: demoSel.productos[0]?.nombre || 'Item A',
-              q: 3,
-              pr: demoSel.productos[0]?.precio || 1500,
-              ic: demoSel.productos[0]?.icono || '📦'
-            }
-          ],
-          timestamp: now - 3600000, // 1 hour ago
-          prod_resumen: `${demoSel.productos[0]?.icono || '📦'}${demoSel.productos[0]?.nombre || 'Item'} (3x)`,
-          hora: new Date(now - 3600000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-        },
-        {
-          id: secondSaleId,
-          vendedorId: demoSel.vendedores[1]?.id || 'V2',
-          vendedorNombre: demoSel.vendedores[1]?.nombre || 'Pedro Leal',
-          clienteId: 'C_MOCK_2',
-          clienteNombre: 'Ricos Tacos Imperial',
-          monto: (demoSel.productos[2]?.precio || 2000) * 5, // quantity of 5
-          tipoCobro: 'credito',
-          items: [
-            {
-              id: demoSel.productos[2]?.id || 'P3',
-              nombre: demoSel.productos[2]?.nombre || 'Item C',
-              q: 5,
-              pr: demoSel.productos[2]?.precio || 2000,
-              ic: demoSel.productos[2]?.icono || '🧁'
-            }
-          ],
-          timestamp: now - 1800000, // 30 mins ago
-          prod_resumen: `${demoSel.productos[2]?.icono || '🧁'}${demoSel.productos[2]?.nombre || 'Item'} (5x)`,
-          hora: new Date(now - 1800000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-        }
-      ];
-
-      localStorage.setItem('rp_ventas', JSON.stringify(mockVentas));
-
-      // Sync mock seeded sales to Firestone database so standard online sync is hydrated
-      if (cloudSaved) {
-        try {
-          const batch = writeBatch(db);
-          mockVentas.forEach((mv) => {
-            batch.set(doc(db, 'ventas', mv.id), {
-              id: mv.id,
-              vendedorId: mv.vendedorId,
-              vendedorNombre: mv.vendedorNombre,
-              clienteId: mv.clienteId,
-              clienteNombre: mv.clienteNombre,
-              monto: mv.monto,
-              tipoCobro: mv.tipoCobro === 'efectivo' ? 'efectivo' : 'crédito',
-              items: mv.items,
-              timestamp: mv.timestamp
-            });
-          });
-          await batch.commit();
-        } catch (seedErr) {
-          console.warn('Silent seeding to remote database interrupted:', seedErr);
-        }
-      }
+      // Start with exactly zero balance and zero sales as requested
+      const mockVentas: any[] = [];
+      localStorage.setItem('rp_ventas', JSON.stringify([]));
 
       if (cloudSaved) {
-        triggerToast(`✓ Demo iniciada para ${customName}`);
+        triggerToast(`✓ Demo iniciada para ${customName} con saldo en cero`);
       } else {
-        triggerToast(`✓ Demo iniciada localmente para ${customName}`);
+        triggerToast(`✓ Demo iniciada localmente para ${customName} con saldo en cero`);
       }
       setDemoSel(null);
       setDemoNameInput('');

@@ -306,20 +306,21 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
 
         <div className="w-full space-y-3">
           {/* Always show the Rapid AI Business Auto-Configuration Input so it is never hidden or disabled */}
-          <div className="w-full bg-[#140E20]/90 border border-purple-500/20 rounded-2xl p-4.5 text-left relative overflow-hidden mb-2">
+          <div className="w-full bg-[#140E20]/90 border border-purple-500/20 rounded-2xl p-4 text-left relative overflow-hidden mb-2">
             <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl pointer-events-none" />
-            <div className="flex gap-2 items-center mb-1.5">
+            <div className="flex gap-2 items-center mb-1.5 relative z-10">
               <span className="text-sm animate-pulse">🪄</span>
               <div className="text-xs font-bold text-purple-300">Configuración Express con IA</div>
             </div>
-            <p className="text-[11px] text-[#8A93A8] leading-relaxed mb-3.5">
+            <p className="text-[11px] text-[#8A93A8] leading-relaxed mb-3.5 relative z-10">
               Pega el sitio web de tu cliente (ej. <strong>nayaritas.mx</strong>) y Gemini generará su catálogo real, logo de marca, colores y rutas móviles de inmediato.
             </p>
-            <div className="flex gap-2 bg-[#06080C]/80 border border-purple-500/15 rounded-xl p-1.5 focus-within:border-purple-300/30 transition-all">
+            <div className="flex gap-2 bg-[#06080C]/80 border border-purple-500/15 rounded-xl p-1.5 focus-within:border-purple-300/30 transition-all relative z-10">
               <input 
                 type="text" 
                 value={fastUrl} 
                 onChange={(e) => setFastUrl(e.target.value)} 
+                onKeyDown={(e) => e.key === 'Enter' && handleExecuteFastConfig()}
                 disabled={fastLoading}
                 className="flex-1 bg-transparent px-2 py-1 text-xs focus:outline-none placeholder-purple-300/30 text-white disabled:opacity-50"
                 placeholder="Ej: pasteleria.com o nayaritas.mx"
@@ -328,7 +329,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                 type="button"
                 onClick={handleExecuteFastConfig} 
                 disabled={fastLoading}
-                className="px-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 font-bold flex items-center justify-center shrink-0 active:scale-95 cursor-pointer text-white text-[10px] rounded-lg transition-all py-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 font-bold flex items-center justify-center shrink-0 active:scale-95 cursor-pointer text-white text-[10px] rounded-lg transition-all py-1.5 disabled:opacity-60 disabled:cursor-not-allowed shadow-md"
               >
                 {fastLoading ? 'Configurando...' : 'Crear con IA'}
               </button>
