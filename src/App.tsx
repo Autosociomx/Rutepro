@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType, auth } from './firebase';
+import { signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
 
@@ -98,6 +99,17 @@ export default function App() {
     });
 
     return () => unsub();
+  }, []);
+
+  // Perform Firebase Anonymous sign-in on boot to secure writes in Firestore
+  useEffect(() => {
+    signInAnonymously(auth)
+      .then((userCred) => {
+        console.log('Signed in anonymously as:', userCred.user.uid);
+      })
+      .catch((err) => {
+        console.warn('Anonymous sign-in failed or resumed:', err);
+      });
   }, []);
 
   const handleSaveConfig = async (newCfg: AppConfig) => {

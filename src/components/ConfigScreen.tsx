@@ -42,6 +42,7 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
   const [newVndName, setNewVndName] = useState('');
   const [newVndRole, setNewVndRole] = useState<'repartidor' | 'cajero' | 'ambos'>('repartidor');
   const [newVndRuta, setNewVndRuta] = useState('');
+  const [newVndMeta, setNewVndMeta] = useState('');
 
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
 
@@ -370,17 +371,22 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
       return;
     }
 
-    const newVnd = {
+    const typedMeta = parseFloat(newVndMeta.trim());
+    const metaCents = !isNaN(typedMeta) && typedMeta >= 0 ? Math.round(typedMeta * 100) : 500000;
+
+    const newVnd: Seller = {
       id: 'V' + Date.now(),
       nombre: newVndName.trim(),
       rol: newVndRole,
-      ruta: newVndRuta.trim() || 'Ruta Libre'
+      ruta: newVndRuta.trim() || 'Ruta Libre',
+      meta_diaria: metaCents
     };
 
     setVendedores([...vendedores, newVnd]);
     setShowVendedorModal(false);
     setNewVndName('');
     setNewVndRuta('');
+    setNewVndMeta('');
     triggerToast('✓ Integrante agregado');
   };
 
@@ -886,8 +892,16 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
                   </div>
                   <div className="flex-1 text-left min-w-0">
                     <div className="text-xs font-bold text-white truncate">{vnd.nombre}</div>
-                    <div className="text-[10px] text-[#8A93A8] mt-0.5">
-                      Ruta: {vnd.ruta} · Rol: {vnd.rol === 'repartidor' ? 'Repartidor' : vnd.rol === 'cajero' ? 'Cajero de Sucursal' : 'Cajero / Repartidor'}
+                    <div className="text-[10px] text-[#8A93A8] mt-0.5 flex flex-wrap items-center gap-x-2">
+                      <span>Ruta: {vnd.ruta}</span>
+                      <span>•</span>
+                      <span>Rol: {vnd.rol === 'repartidor' ? 'Repartidor' : vnd.rol === 'cajero' ? 'Cajero' : 'Ambos'}</span>
+                      {vnd.meta_diaria !== undefined && (
+                        <>
+                          <span>•</span>
+                          <span className="text-[#00C896] font-bold">Meta: ${(vnd.meta_diaria / 100).toFixed(0)}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <button 
@@ -1050,6 +1064,18 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
                     placeholder="Ej: Zona Norte / Centro"
                   />
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[9px] font-mono text-[#3E4A60] uppercase font-bold tracking-wider">Meta Diaria de Venta ($ MXN)</label>
+                <input 
+                  type="number" 
+                  step="any"
+                  value={newVndMeta} 
+                  onChange={(e) => setNewVndMeta(e.target.value)} 
+                  className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
+                  placeholder="Ej: 5000 (Opcional, default $5,000.00)"
+                />
               </div>
             </div>
 

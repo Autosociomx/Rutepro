@@ -19,7 +19,8 @@ service cloud.firestore {
     // Config global collection (for app preferences and brand color customization)
     match /config/{configId} {
       allow read: if true;
-      allow write: if configId == 'global' && 
+      allow write: if request.auth != null && 
+                      configId == 'global' && 
                       request.resource.data.nombre is string &&
                       request.resource.data.nombre.size() <= 100 &&
                       isHexColor(request.resource.data.color_principal);
@@ -28,7 +29,8 @@ service cloud.firestore {
     // Ventas collection
     match /ventas/{ventaId} {
       allow read: if true;
-      allow create, update: if isValidId(ventaId) && 
+      allow create, update: if request.auth != null && 
+                              isValidId(ventaId) && 
                               request.resource.data.monto is int &&
                               request.resource.data.monto >= 0 &&
                               request.resource.data.vendedorNombre is string;
@@ -38,7 +40,8 @@ service cloud.firestore {
     // Devoluciones collection
     match /devoluciones/{devolucionId} {
       allow read: if true;
-      allow create, update: if isValidId(devolucionId) &&
+      allow create, update: if request.auth != null && 
+                              isValidId(devolucionId) &&
                               request.resource.data.cantidad is int &&
                               request.resource.data.cantidad >= 0;
       allow delete: if false;
@@ -47,25 +50,26 @@ service cloud.firestore {
     // Rutas metrics collection
     match /rutas_metrics/{metricId} {
       allow read: if true;
-      allow write: if isValidId(metricId);
+      allow write: if request.auth != null && isValidId(metricId);
     }
 
     // Clientes collection
     match /clientes/{clienteId} {
       allow read: if true;
-      allow write: if isValidId(clienteId);
+      allow write: if request.auth != null && isValidId(clienteId);
     }
 
     // Inventario ruta collection
     match /inventario_ruta/{vendedorId} {
       allow read: if true;
-      allow write: if isValidId(vendedorId);
+      allow write: if request.auth != null && isValidId(vendedorId);
     }
 
     // Historial cierres collection
     match /historial_cierres/{cierreId} {
       allow read: if true;
-      allow write: if isValidId(cierreId) &&
+      allow write: if request.auth != null && 
+                      isValidId(cierreId) &&
                       request.resource.data.ventas_efectivo is int &&
                       request.resource.data.ventas_efectivo >= 0;
     }

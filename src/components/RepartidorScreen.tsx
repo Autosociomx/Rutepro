@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
-import { Product, Seller, AppConfig } from '../types';
+import { Product, Seller, AppConfig, Devolucion } from '../types';
 
 interface ClientSaleRecord {
   id: string;
@@ -28,6 +28,13 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
   const [cliHoy, setCliHoy] = useState<ClientSaleRecord[]>([]);
   const [cartRep, setCartRep] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
   const [tipoRep, setTipoRep] = useState<'efectivo' | 'credito'>('efectivo');
+
+  // Devoluciones / Mermas states
+  const [devoluciones, setDevoluciones] = useState<Devolucion[]>([]);
+  const [showDevolModal, setShowDevolModal] = useState(false);
+  const [devolClienteName, setDevolClienteName] = useState('');
+  const [selectedDevolProdId, setSelectedDevolProdId] = useState('');
+  const [devolCant, setDevolCant] = useState<number>(1);
   
   // New Client Modal state
   const [showCliModal, setShowCliModal] = useState(false);
@@ -49,7 +56,72 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setCartRep([]);
     setTipoRep('efectivo');
     setActiveTab('ped');
+
+    // Load local devoluciones for this seller
+    const localDevs = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
+    const activeDevs = localDevs.filter((d: any) => d.vendedorId === vnd.id);
+    setDevoluciones(activeDevs);
+
     triggerToast(`Ruta iniciada para ${vnd.nombre}`);
+  };
+
+  const handleRegDevol = async () => {
+    if (!devolClienteName.trim()) {
+      triggerToast('Escribe el nombre del cliente', 'err');
+      return;
+    }
+    if (!selectedDevolProdId) {
+      triggerToast('Selecciona un producto', 'err');
+      return;
+    }
+    const cantVal = parseFloat(String(devolCant));
+    if (isNaN(cantVal) || cantVal <= 0) {
+      triggerToast('La cantidad debe ser mayor a 0', 'err');
+      return;
+    }
+
+    const prod = cfg.productos.find(p => p.id === selectedDevolProdId);
+    if (!prod) return;
+
+    const devolId = 'D' + Date.now();
+
+    const newDevol: Devolucion = {
+      id: devolId,
+      vendedorId: selectedSeller!.id,
+      vendedorNombre: selectedSeller!.nombre,
+      clienteId: 'C_ROUTE_' + Date.now(),
+      clienteNombre: devolClienteName.trim(),
+      productoId: prod.id,
+      productoNombre: prod.nombre,
+      cantidad: cantVal,
+      timestamp: Date.now()
+    };
+
+    try {
+      // Direct Firestore sync with safety try/catch and audit handling
+      try {
+        await setDoc(doc(db, 'devoluciones', devolId), newDevol);
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `devoluciones/${devolId}`);
+      }
+
+      // Save locally to local devoluciones list in localStorage
+      const prevLocal = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
+      prevLocal.push(newDevol);
+      localStorage.setItem('rp_devoluciones', JSON.stringify(prevLocal));
+
+      // Append state to update immediate UI shift statistics
+      setDevoluciones([...devoluciones, newDevol]);
+
+      setDevolClienteName('');
+      setSelectedDevolProdId('');
+      setDevolCant(1);
+      setShowDevolModal(false);
+      triggerToast(`✓ Merma registrada: ${newDevol.cantidad} ${prod.unidad} de ${prod.nombre}`);
+    } catch (e) {
+      console.error(e);
+      triggerToast('Error al escribir en la base de datos', 'err');
+    }
   };
 
   const handleAddCartRep = (prod: Product) => {
@@ -298,7 +370,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
           <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Clientes</div>
         </div>
         <div className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center">
-          <div className="text-xs font-bold text-red-400 tracking-wider">0</div>
+          <div className="text-xs font-bold text-red-400 tracking-wider">{devoluciones.length}</div>
           <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Mermas</div>
         </div>
       </div>
@@ -363,22 +435,61 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               </div>
             )}
 
-            <button 
-              onClick={() => {
-                if (!cfg.productos || cfg.productos.length === 0) {
-                  triggerToast('Configura productos en su catálogo de negocio primero', 'err');
-                  return;
-                }
-                setShowCliModal(true);
-              }}
-              className="w-full py-3.5 bg-[#181D2B] hover:bg-[#1F2638] border border-white/5 text-[#8A93A8] hover:text-white rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer text-center"
-            >
-              + Agregar Entrega a Cliente
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                onClick={() => {
+                  if (!cfg.productos || cfg.productos.length === 0) {
+                    triggerToast('Configura productos en su catálogo de negocio primero', 'err');
+                    return;
+                  }
+                  setShowCliModal(true);
+                }}
+                className="w-full py-3.5 bg-[#181D2B] hover:bg-[#1F2638] border border-white/5 text-[#8A93A8] hover:text-white rounded-xl text-[11px] font-bold tracking-wide transition-all cursor-pointer text-center"
+              >
+                + Registrar Entrega
+              </button>
+              
+              <button 
+                onClick={() => {
+                  if (!cfg.productos || cfg.productos.length === 0) {
+                    triggerToast('Configura productos en su catálogo de negocio primero', 'err');
+                    return;
+                  }
+                  setShowDevolModal(true);
+                }}
+                className="w-full py-3.5 bg-red-950/10 hover:bg-red-950/20 border border-red-900/20 hover:border-red-500/30 text-[#8A93A8] hover:text-red-400 rounded-xl text-[11px] font-bold tracking-wide transition-all cursor-pointer text-center"
+              >
+                ♻️ Registrar Merma
+              </button>
+            </div>
 
-            {cliHoy.length > 0 && (
+            {devoluciones.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <div className="text-[10px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold text-left">Mermas / Devoluciones en Ruta</div>
+                <div className="space-y-2">
+                  {devoluciones.map((d) => (
+                    <div key={d.id} className="bg-red-950/5 border border-red-900/10 rounded-xl p-3 flex items-center justify-between gap-3 text-left">
+                      <div className="w-8 h-8 rounded bg-red-500/10 border border-red-500/20 flex items-center justify-center font-display font-extrabold text-xs text-red-400 shrink-0">
+                        ♻️
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white truncate">{d.clienteNombre}</div>
+                        <div className="text-[10px] text-[#8A93A8] mt-0.5">
+                          {d.cantidad} {cfg.productos.find(p => p.id === d.productoId)?.unidad || 'pzas'} de {d.productoNombre}
+                        </div>
+                      </div>
+                      <div className="text-[10px] font-bold text-red-400/90 whitespace-nowrap bg-red-500/5 px-2 py-1 rounded border border-red-500/10">
+                        Merma
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(cliHoy.length > 0 || devoluciones.length > 0) && (
               <div className="pt-4 border-t border-white/5 space-y-3.5">
-                <div className="bg-[#111520] border border-white/5 rounded-xl p-3.5 flex justify-between items-center">
+                <div className="bg-[#111520] border border-white/5 rounded-xl p-3.5 flex justify-between items-center text-left">
                   <span className="text-xs font-medium text-[#8A93A8]">Total de Ventas Liquidadas</span>
                   <span className="text-sm font-bold text-[#E8B04A]">{formatPrice(shiftTotal)}</span>
                 </div>
@@ -446,7 +557,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
                 <div className="text-[9px] text-[#3E4A60] uppercase mt-0.5">Duración</div>
               </div>
               <div className="bg-[#111520] border border-white/5 rounded-xl p-3 text-center">
-                <div className="text-sm font-bold text-yellow-400">0</div>
+                <div className="text-sm font-bold text-yellow-400">{devoluciones.length}</div>
                 <div className="text-[9px] text-[#3E4A60] uppercase mt-0.5">Devoluciones</div>
               </div>
             </div>
@@ -650,6 +761,77 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               </button>
               <button onClick={handleRegCli} className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-[#10B981] font-bold text-xs text-[#06080C] hover:brightness-110 rounded-xl cursor-pointer active:scale-97 transition-all text-center">
                 Registrar Cliente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REGISTER MERMA / DEVOLUCION */}
+      {showDevolModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-fade-in text-left">
+          <div className="bg-[#111520] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5.5 w-full sm:max-w-md max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl">
+            <div className="font-display font-bold text-base text-white flex items-center gap-2">
+              <span>♻️</span>
+              <span>Registrar Merma / Devolución</span>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Cliente / Origen</label>
+              <input 
+                type="text" 
+                value={devolClienteName} 
+                onChange={(e) => setDevolClienteName(e.target.value)} 
+                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-red-500"
+                placeholder="Ej: Abarrotes Doña Rosa / Merma Ruta"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Producto</label>
+              <select 
+                value={selectedDevolProdId}
+                onChange={(e) => setSelectedDevolProdId(e.target.value)}
+                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-red-500 cursor-pointer"
+              >
+                <option value="">-- Selecciona el Producto --</option>
+                {cfg.productos.map((prod) => (
+                  <option key={prod.id} value={prod.id}>
+                    {prod.icono || '📦'} {prod.nombre} (${(prod.precio / 100).toFixed(0)} c/u)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Cantidad Devuelta</label>
+              <input 
+                type="number" 
+                step="any"
+                min="0.01"
+                value={devolCant} 
+                onChange={(e) => setDevolCant(parseFloat(e.target.value) || 0)} 
+                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-red-500"
+                placeholder="Ej: 5"
+              />
+            </div>
+
+            <div className="flex gap-2.5 pt-1.5">
+              <button 
+                onClick={() => {
+                  setShowDevolModal(false);
+                  setDevolClienteName('');
+                  setDevolCant(1);
+                }} 
+                className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#8A93A8] hover:text-white cursor-pointer active:scale-97 transition-all text-center"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleRegDevol} 
+                className="flex-1 py-3 bg-gradient-to-r from-red-500 to-rose-600 font-bold text-xs text-white hover:brightness-110 rounded-xl cursor-pointer active:scale-97 transition-all text-center"
+              >
+                Registrar Merma
               </button>
             </div>
           </div>

@@ -18,6 +18,7 @@ export interface Seller {
   rol: 'repartidor' | 'cajero' | 'ambos';
   ruta: string;
   vehiculo?: string; // fallback compatibility
+  meta_diaria?: number; // Daily sales goal in cents, e.g. 500000 = $5,000.00 pesos
 }
 
 export interface Client {
