@@ -17,6 +17,7 @@ export interface Seller {
   nombre: string;
   rol: 'repartidor' | 'cajero' | 'ambos';
   ruta: string;
+  meta_diaria?: number; // in cents, e.g. 500000 = $5,000.00
   vehiculo?: string; // fallback compatibility
 }
 

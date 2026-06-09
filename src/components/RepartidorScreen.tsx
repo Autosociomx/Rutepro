@@ -33,6 +33,13 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
   const [showCliModal, setShowCliModal] = useState(false);
   const [newCliName, setNewCliName] = useState('');
 
+  // Devoluciones state
+  const [devolucionesHoy, setDevolucionesHoy] = useState(0);
+  const [showDevModal, setShowDevModal] = useState(false);
+  const [devProd, setDevProd] = useState<{ id: string; nombre: string; icono: string } | null>(null);
+  const [devQty, setDevQty] = useState('1');
+  const [devClientName, setDevClientName] = useState('');
+
   // Route AI Chat state
   const [chatInp, setChatInp] = useState('');
   const [chatLogs, setChatLogs] = useState<{ role: 'bot' | 'usr'; text: string }[]>([
@@ -48,6 +55,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setCliHoy([]);
     setCartRep([]);
     setTipoRep('efectivo');
+    setDevolucionesHoy(0);
     setActiveTab('ped');
     triggerToast(`Ruta iniciada para ${vnd.nombre}`);
   };
@@ -154,6 +162,45 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setHoraIni(null);
     setCliHoy([]);
     setCartRep([]);
+    setDevolucionesHoy(0);
+  };
+
+  const handleRegDevolucion = async () => {
+    if (!devProd) {
+      triggerToast('Selecciona un producto a devolver', 'err');
+      return;
+    }
+    const qty = parseInt(devQty) || 0;
+    if (qty <= 0) {
+      triggerToast('Ingresa una cantidad válida', 'err');
+      return;
+    }
+
+    const devId = 'D' + Date.now();
+    const devDoc = {
+      id: devId,
+      vendedorId: selectedSeller!.id,
+      vendedorNombre: selectedSeller!.nombre,
+      clienteId: 'C_DEV_' + Date.now(),
+      clienteNombre: devClientName.trim() || 'Cliente sin nombre',
+      productoId: devProd.id,
+      productoNombre: devProd.nombre,
+      cantidad: qty,
+      timestamp: Date.now()
+    };
+
+    try {
+      await addDoc(collection(db, 'devoluciones'), devDoc);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'devoluciones');
+    }
+
+    setDevolucionesHoy(prev => prev + 1);
+    setDevProd(null);
+    setDevQty('1');
+    setDevClientName('');
+    setShowDevModal(false);
+    triggerToast(`↩ Devolución registrada: ${devProd.nombre} (${qty}x)`);
   };
 
   const handleWhatsAppReport = () => {
@@ -297,9 +344,12 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
           <div className="text-xs font-bold text-[#EEF1F8] tracking-wider">{cliHoy.length}</div>
           <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Clientes</div>
         </div>
-        <div className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center">
-          <div className="text-xs font-bold text-red-400 tracking-wider">0</div>
-          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Mermas</div>
+        <div
+          className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center cursor-pointer hover:bg-[#181D2B] transition-all"
+          onClick={() => setShowDevModal(true)}
+        >
+          <div className="text-xs font-bold text-red-400 tracking-wider">{devolucionesHoy}</div>
+          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">↩ Devolver</div>
         </div>
       </div>
 
@@ -446,7 +496,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
                 <div className="text-[9px] text-[#3E4A60] uppercase mt-0.5">Duración</div>
               </div>
               <div className="bg-[#111520] border border-white/5 rounded-xl p-3 text-center">
-                <div className="text-sm font-bold text-yellow-400">0</div>
+                <div className="text-sm font-bold text-yellow-400">{devolucionesHoy}</div>
                 <div className="text-[9px] text-[#3E4A60] uppercase mt-0.5">Devoluciones</div>
               </div>
             </div>
@@ -650,6 +700,62 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               </button>
               <button onClick={handleRegCli} className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-[#10B981] font-bold text-xs text-[#06080C] hover:brightness-110 rounded-xl cursor-pointer active:scale-97 transition-all text-center">
                 Registrar Cliente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REGISTRAR DEVOLUCION */}
+      {showDevModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-fade-in text-left">
+          <div className="bg-[#111520] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5.5 w-full sm:max-w-md space-y-4 shadow-2xl">
+            <div className="font-display font-bold text-base text-white">Registrar Devolución</div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Cliente</label>
+              <input
+                type="text"
+                value={devClientName}
+                onChange={(e) => setDevClientName(e.target.value)}
+                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-red-500"
+                placeholder="Ej: Abarrotes Doña Rosa"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Producto devuelto</label>
+              <div className="grid grid-cols-4 gap-1.5 max-h-[140px] overflow-y-auto">
+                {cfg.productos.map((prod) => (
+                  <div
+                    key={prod.id}
+                    onClick={() => setDevProd({ id: prod.id, nombre: prod.nombre, icono: prod.icono || '📦' })}
+                    className={`rounded-xl p-2 flex flex-col items-center gap-1 cursor-pointer transition-all active:scale-95 ${devProd?.id === prod.id ? 'bg-red-500/15 border border-red-500/30' : 'bg-[#181D2B] border border-white/5 hover:bg-red-500/10'}`}
+                  >
+                    <span className="text-xl">{prod.icono || '📦'}</span>
+                    <span className="text-[8px] text-white font-bold truncate w-full text-center leading-tight">{prod.nombre}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Cantidad devuelta</label>
+              <input
+                type="number"
+                min="1"
+                value={devQty}
+                onChange={(e) => setDevQty(e.target.value)}
+                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-red-500 w-full"
+              />
+            </div>
+
+            <div className="flex gap-2.5">
+              <button onClick={() => setShowDevModal(false)} className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#8A93A8] hover:text-white cursor-pointer active:scale-97 transition-all text-center">
+                Cancelar
+              </button>
+              <button onClick={handleRegDevolucion} className="flex-1 py-3 bg-red-500/80 hover:bg-red-500 font-bold text-xs text-white rounded-xl cursor-pointer active:scale-97 transition-all text-center">
+                ↩ Confirmar Devolución
               </button>
             </div>
           </div>

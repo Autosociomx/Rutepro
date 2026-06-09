@@ -42,6 +42,7 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
   const [newVndName, setNewVndName] = useState('');
   const [newVndRole, setNewVndRole] = useState<'repartidor' | 'cajero' | 'ambos'>('repartidor');
   const [newVndRuta, setNewVndRuta] = useState('');
+  const [newVndMeta, setNewVndMeta] = useState('');
 
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
 
@@ -370,17 +371,20 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
       return;
     }
 
+    const metaCents = parseInt(newVndMeta) || 0;
     const newVnd = {
       id: 'V' + Date.now(),
       nombre: newVndName.trim(),
       rol: newVndRole,
-      ruta: newVndRuta.trim() || 'Ruta Libre'
+      ruta: newVndRuta.trim() || 'Ruta Libre',
+      ...(metaCents > 0 && { meta_diaria: metaCents })
     };
 
     setVendedores([...vendedores, newVnd]);
     setShowVendedorModal(false);
     setNewVndName('');
     setNewVndRuta('');
+    setNewVndMeta('');
     triggerToast('✓ Integrante agregado');
   };
 
@@ -887,7 +891,8 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
                   <div className="flex-1 text-left min-w-0">
                     <div className="text-xs font-bold text-white truncate">{vnd.nombre}</div>
                     <div className="text-[10px] text-[#8A93A8] mt-0.5">
-                      Ruta: {vnd.ruta} · Rol: {vnd.rol === 'repartidor' ? 'Repartidor' : vnd.rol === 'cajero' ? 'Cajero de Sucursal' : 'Cajero / Repartidor'}
+                      {vnd.ruta} · {vnd.rol === 'repartidor' ? 'Repartidor' : vnd.rol === 'cajero' ? 'Cajero' : 'Ambos'}
+                      {vnd.meta_diaria ? ` · Meta: $${(vnd.meta_diaria / 100).toFixed(0)}` : ''}
                     </div>
                   </div>
                   <button 
@@ -1042,14 +1047,26 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[9px] font-mono text-[#3E4A60] uppercase font-bold tracking-wider">Zona territorial / Ruta</label>
-                  <input 
-                    type="text" 
-                    value={newVndRuta} 
-                    onChange={(e) => setNewVndRuta(e.target.value)} 
+                  <input
+                    type="text"
+                    value={newVndRuta}
+                    onChange={(e) => setNewVndRuta(e.target.value)}
                     className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
                     placeholder="Ej: Zona Norte / Centro"
                   />
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[9px] font-mono text-[#3E4A60] uppercase font-bold tracking-wider">Meta diaria (centavos, opcional)</label>
+                <input
+                  type="number"
+                  value={newVndMeta}
+                  onChange={(e) => setNewVndMeta(e.target.value)}
+                  className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                  placeholder="Ej: 500000 = $5,000.00"
+                />
+                <span className="text-[9px] text-[#3E4A60]">Deja en blanco para usar el valor predeterminado ($5,000)</span>
               </div>
             </div>
 

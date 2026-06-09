@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { db, auth, handleFirestoreError, OperationType } from './firebase';
+import { signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
 
@@ -70,6 +71,11 @@ export default function App() {
     root.style.setProperty('--oro-d', hexToRgba(color, 0.12));
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
+
+  // Ensure anonymous auth before any Firestore access
+  useEffect(() => {
+    signInAnonymously(auth).catch(console.warn);
+  }, []);
 
   // Real-time Firestore synchronization on mount for the corporate setup
   useEffect(() => {

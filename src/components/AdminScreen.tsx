@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Product, Seller, Venta, VentaItem, AppConfig } from '../types';
+import { Product, Seller, Venta, VentaItem, Devolucion, AppConfig } from '../types';
 
 interface AdminScreenProps {
   cfg: AppConfig;
@@ -12,6 +12,7 @@ interface AdminScreenProps {
 export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
   const [activeTab, setActiveTab] = useState<'res' | 'rutas' | 'alertas' | 'ia'>('res');
   const [ventas, setVentas] = useState<Venta[]>([]);
+  const [devoluciones, setDevoluciones] = useState<Devolucion[]>([]);
 
   // Asesor chat states
   const [chatInp, setChatInp] = useState('');
@@ -57,6 +58,28 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       setVentas(localSales);
     });
 
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'devoluciones'), (snapshot) => {
+      const devs: Devolucion[] = [];
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data();
+        devs.push({
+          id: docSnap.id,
+          vendedorId: d.vendedorId || '',
+          vendedorNombre: d.vendedorNombre || '',
+          clienteId: d.clienteId || '',
+          clienteNombre: d.clienteNombre || '',
+          productoId: d.productoId || '',
+          productoNombre: d.productoNombre || '',
+          cantidad: Number(d.cantidad) || 0,
+          timestamp: d.timestamp || Date.now()
+        });
+      });
+      setDevoluciones(devs);
+    }, console.warn);
     return () => unsub();
   }, []);
 
@@ -259,7 +282,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                 <div className="text-[8px] text-[#8A93A8] mt-1.5">de {cfg.vendedores?.filter(v => v.rol !== 'cajero').length || 0} de reparto</div>
               </div>
               <div className="bg-[#111520] border border-white/5 rounded-xl p-3.5">
-                <div className="text-xl font-bold text-red-400">0</div>
+                <div className="text-xl font-bold text-red-400">{devoluciones.length}</div>
                 <div className="text-[9px] text-[#3E4A60] uppercase mt-0.5 tracking-wider font-bold">Devoluciones</div>
                 <div className="text-[8px] text-[#8A93A8] mt-1.5">Nivel controlado</div>
               </div>
@@ -333,7 +356,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
               {cfg.vendedores.map((v) => {
                 const vndSales = ventas.filter(x => x.vendedorId === v.id);
                 const vndTot = vndSales.reduce((sum, item) => sum + (item.monto || 0), 0);
-                const progressPct = Math.min(100, Math.round((vndTot / 500000) * 100)); // target meta placeholder
+                const metaDiaria = v.meta_diaria || 500000;
+                const progressPct = Math.min(100, Math.round((vndTot / metaDiaria) * 100));
                 
                 return (
                   <div key={v.id} className="bg-[#111520] border border-white/5 rounded-xl p-3.5 space-y-3">
@@ -355,7 +379,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center text-[9px] text-[#8A93A8]">
-                        <span>Meta Diaria de Reparto</span>
+                        <span>Meta: {formatPrice(metaDiaria)}</span>
                         <span className="font-bold text-[#00C896]">{progressPct}%</span>
                       </div>
                       <div className="h-1 bg-[#181D2B] rounded-full overflow-hidden">
