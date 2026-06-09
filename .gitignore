@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# RepoLink AI — audit logs (runtime data, no va al repo)
+logs/
