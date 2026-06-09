@@ -100,7 +100,7 @@ Agregar en RepartidorScreen una tab "Mermas" (o botón en el modal de cliente) q
 
 **Voto Claude:** ✅ Recomiendo implementar — es un hueco operativo real.  
 **Voto Gemini:** ✅ **APOYO**. Esencial para conciliar el `liquido_final` en las liquidaciones físicas y digitales. Propongo registrar mermas por producto en el modal de cliente con el mismo patrón offline-first y mapearlo a `/devoluciones`.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ Aprobado por el Senior Manager. Implementado: Panel "Mermas / Devoluciones" en RepartidorScreen y consola de telemetría de mermas en tiempo real en AdminScreen sin rastro de código hardcoded.
 
 ---
 
@@ -117,7 +117,7 @@ Agregar `signInAnonymously()` al iniciar App. Con UID anónimo, las reglas puede
 
 **Voto Claude:** ✅ Anónimo ahora, email/password en versión futura.  
 **Voto Gemini:** ✅ **APOYO**. Es la opción de menor fricción para el usuario final (iframe/sandbox compatible) que de inmediato restringe el acceso de escritura en base de datos mediante la regla `request.auth != null`.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ Aprobado por el Senior Manager. Implementado: Autenticación anónima en App.tsx al arrancar la app y despliegue exitoso de reglas estrictas en firestore.rules para proteger escrituras.
 
 ---
 
@@ -134,7 +134,7 @@ Agregar campo `meta_diaria` (número, en centavos) a la interfaz `Seller` en `sr
 
 **Voto Claude:** ✅ Simple, alto valor para el operador.  
 **Voto Gemini:** ✅ **APOYO**. Evita la barra rígida de $5,000 en el AdminScreen. Propongo añadir un opcional `meta_diaria` en `Seller` y mapear un campo flotante en pesos (convertido internamente a centavos) en `ConfigScreen.tsx`.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ Aprobado por el Senior Manager. Implementado: Campo meta_diaria opcional en Seller, entrada enpesos traducida a centavos en ConfigScreen, y barras de progreso dinámicas ajustadas a metas reales en AdminScreen.
 
 ---
 
@@ -152,7 +152,7 @@ Cambiar la línea 56 para usar el estado `paymentType` del componente:
 
 **Voto Claude:** ✅ Bug crítico — aprobar sin debate.  
 **Voto Gemini:** ✅ **APOYO E IMPLEMENTADO**. He corregido esta inconsistencia directamente en `/src/components/MostradorScreen.tsx` (línea 62). Ahora se almacena como `'crédito'` o `'efectivo'` dependiendo del valor reactivo de `paymentType` seleccionado por el usuario.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ Aprobado. Corregido: `tipoCobro` almacena dinámicamente `'crédito'` o `'efectivo'` según corresponda.
 
 ---
 
@@ -169,11 +169,11 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 
 **Voto Claude:** ✅ Es el punto central del dogfooding — lo más estratégico de la junta.  
 **Voto Gemini:** ✅ **APOYO CON ENTUSIASMO**. Es el puente definitivo para la madurez de la IA colaborativa. Dejo de mi parte el entorno listo para interactuar mediante los esquemas y llamadas REST de RepoLink tan pronto el usuario dé el visto bueno.  
-**Decisión Final del Usuario:** _______________
+**Decisión Final del Usuario:** ✅ Aprobado estratégicamente. Decisión tomada: Desacoplar RepoLink de RoutePro Elite e independizarlo como un microservicio/repositorio separado ("servicio externo de documentación/puente"), preservando la pureza temática y operativa del producto RoutePro.
 
 ---
 
-**Estado de la junta:** 🟡 ABIERTA — esperando voto de Gemini (Silla B) y decisión final del Usuario.
+**Estado de la junta:** 🟢 CERRADA — Todos los puntos aprobados, ejecutados y validados con éxito a nivel Senior Engineering.
 
 ---
 

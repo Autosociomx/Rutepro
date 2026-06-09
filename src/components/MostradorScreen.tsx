@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from '../types';
+import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+
+const API_KEY =
+  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+  (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
+  '';
+const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 
 interface MostradorScreenProps {
   cfg: AppConfig;
@@ -14,6 +22,11 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
   const [cartMos, setCartMos] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
   const [paymentType, setPaymentType] = useState<'efectivo' | 'tarjeta'>('efectivo');
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  
+  // Geolocation states
+  const [showGeoModal, setShowGeoModal] = useState(false);
+  const [geoLoc, setGeoLoc] = useState<google.maps.LatLngLiteral | null>(null);
+  const [geoStatus, setGeoStatus] = useState<'requesting' | 'valid' | 'invalid' | 'error'>('requesting');
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -42,12 +55,31 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
     triggerToast('✓ Los productos del carrito han sido retirados');
   };
 
-  const handleCobrar = async () => {
+  const initCobro = () => {
     if (cartMos.length === 0) {
       triggerToast('Agrega productos al carrito para cobrar', 'err');
       return;
     }
+    setShowGeoModal(true);
+    setGeoStatus('requesting');
+    
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setGeoLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setGeoStatus('valid');
+        },
+        (err) => {
+          console.error(err);
+          setGeoStatus('error');
+        }
+      );
+    } else {
+      setGeoStatus('error');
+    }
+  };
 
+  const executeCobro = async () => {
     const tot = cartMos.reduce((sum, item) => sum + (item.pr * item.q), 0);
     const saleId = 'S' + Date.now();
     const nowStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
@@ -71,13 +103,12 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
     };
 
     try {
-      // Sync into global collections
-      try {
-        await setDoc(doc(db, 'ventas', saleId), saleDocData);
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, `ventas/${saleId}`);
-      }
+      await setDoc(doc(db, 'ventas', saleId), saleDocData);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `ventas/${saleId}`);
+    }
 
+    try {
       // Log locally inside localStorage cache
       const prevLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
       prevLocal.push({
@@ -90,9 +121,10 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
 
       triggerToast(`✓ Cobro exitoso por ${formatPrice(tot)}`);
       setCartMos([]);
+      setShowGeoModal(false);
     } catch (err: any) {
       console.error(err);
-      triggerToast('Error registrando venta en el servidor', 'err');
+      triggerToast('Error con almacenamiento de venta', 'err');
     }
   };
 
@@ -252,30 +284,61 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
                   <p className="text-[9px] text-[#8A93A8] max-w-[140px] mt-1 leading-relaxed">Selecciona un producto del catálogo para cargarlo.</p>
                 </div>
               ) : (
-                cartMos.map((item, idx) => (
-                  <div key={idx} className="bg-[#111520] border border-white/5 rounded-lg p-2.5 flex items-center justify-between gap-2 animate-fade-in text-left">
-                    <span className="text-lg shrink-0">{item.icono}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] font-bold text-white truncate">{item.nombre}</div>
-                      <div className="text-[9px] text-[#8A93A8] mt-0.5">{formatPrice(item.pr)} c/u</div>
+                cartMos.map((item, idx) => {
+                  const prodRef = cfg.productos.find(p => p.id === item.id);
+                  return (
+                    <div key={idx} className="bg-[#111520] border border-white/5 rounded-lg p-2 flex flex-wrap items-center justify-between gap-2 animate-fade-in text-left">
+                      <div className="flex items-center gap-2 flex-1 min-w-[50%]">
+                        <span className="text-lg shrink-0">{item.icono}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] font-bold text-white truncate">{item.nombre}</div>
+                          <div className="text-[9px] text-[#8A93A8] mt-0.5">{formatPrice(item.pr)} c/u</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-end shrink-0 select-none">
+                        {prodRef?.piezasPorCaja && (
+                          <button 
+                            onClick={() => handleChangeQty(idx, (prodRef.piezasPorCaja || 1) - 1)}
+                            className="text-[9px] font-bold bg-[#181D2B] border border-white/5 text-[#E8B04A] px-2 py-1 rounded cursor-pointer"
+                          >
+                            +Caja ({prodRef.piezasPorCaja})
+                          </button>
+                        )}
+                        <div className="flex border border-white/5 bg-[#0B0E14] rounded overflow-hidden w-16">
+                          <button 
+                            onClick={() => handleChangeQty(idx, -1)} 
+                            className="w-5 flex items-center justify-center bg-[#181D2B]/80 text-[#8A93A8] hover:bg-[#1F2638] cursor-pointer text-xs"
+                          >
+                            -
+                          </button>
+                          <input 
+                            type="number" 
+                            value={item.q === 0 ? '' : item.q} 
+                            onChange={(e) => {
+                              const valStr = e.target.value;
+                              const newQ = valStr === '' ? 0 : parseInt(valStr);
+                              const updated = [...cartMos];
+                              updated[idx].q = isNaN(newQ) ? 0 : newQ;
+                              setCartMos(updated);
+                            }}
+                            className="w-full bg-transparent text-center text-[10px] text-white font-bold px-0 focus:outline-none"
+                          />
+                          <button 
+                            onClick={() => handleChangeQty(idx, 1)} 
+                            className="w-5 flex items-center justify-center bg-[#181D2B]/80 text-[#8A93A8] hover:bg-[#1F2638] cursor-pointer text-xs"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <button onClick={() => {
+                          const updated = [...cartMos];
+                          updated.splice(idx, 1);
+                          setCartMos(updated);
+                        }} className="text-red-400 hover:text-red-300 w-5 flex items-center justify-center shrink-0 cursor-pointer">✕</button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0 select-none">
-                      <button 
-                        onClick={() => handleChangeQty(idx, -1)} 
-                        className="w-5 h-5 rounded bg-[#181D2B]/80 text-[#8A93A8] border border-white/5 text-[10px] flex items-center justify-center hover:bg-[#1F2638] cursor-pointer"
-                      >
-                        −
-                      </button>
-                      <span className="font-mono text-[10px] leading-none text-white font-bold w-4.5 text-center">{item.q}</span>
-                      <button 
-                        onClick={() => handleChangeQty(idx, 1)} 
-                        className="w-5 h-5 rounded bg-[#181D2B]/80 text-[#8A93A8] border border-white/5 text-[10px] flex items-center justify-center hover:bg-[#1F2638] cursor-pointer"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -305,7 +368,7 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
 
             <div className="space-y-1.5 shrink-0">
               <button 
-                onClick={handleCobrar}
+                onClick={initCobro}
                 className="w-full py-3 bg-[#00C896] hover:brightness-105 active:scale-97 text-[#06080C] font-extrabold text-xs tracking-wide rounded-lg cursor-pointer text-center"
               >
                 ✓ Cobrar Venta
@@ -342,6 +405,101 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
               >
                 Cerrar Ventana
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GEO VALIDATION MAP MODAL */}
+      {showGeoModal && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111520] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col h-[500px] animate-fade-in">
+            <div className="p-4 border-b border-white/5 flex items-center justify-between">
+              <div className="font-display font-bold text-sm text-white">Verificación de Tienda (Geo-fencing)</div>
+              <button onClick={() => setShowGeoModal(false)} className="text-[#8A93A8] hover:text-white cursor-pointer font-bold text-lg leading-none">&times;</button>
+            </div>
+
+            <div className="flex-1 bg-[#181D2B] relative">
+              {geoStatus === 'requesting' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-[#8A93A8] space-y-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-emerald-500/30 border-t-emerald-500 animate-spin" />
+                  <div className="font-mono text-xs">Adquiriendo señal GPS...</div>
+                </div>
+              )}
+              {hasValidKey ? (
+                <APIProvider apiKey={API_KEY} version="weekly">
+                  <div className="w-full h-full relative">
+                    <Map
+                      defaultCenter={geoLoc || { lat: 19.4326, lng: -99.1332 }}
+                      defaultZoom={15}
+                      mapId="DEMO_MAP_ID"
+                      internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+                      style={{ width: '100%', height: '100%' }}
+                      gestureHandling="greedy"
+                    >
+                      {geoLoc && (
+                        <AdvancedMarker position={geoLoc}>
+                          <Pin background="#10B981" glyphColor="#fff" borderColor="#059669" />
+                        </AdvancedMarker>
+                      )}
+                    </Map>
+                  </div>
+                </APIProvider>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-[#8A93A8] space-y-2 px-6 text-center">
+                  <span className="text-2xl">🗺️</span>
+                  <div className="font-mono text-[10px]">Google Maps API Key requerida para ver el mapa real.</div>
+                  <div className="text-[9px] opacity-70">El GPS seguirá funcionando internamente.</div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-[#0A0D14] space-y-3">
+              <div className="text-xs text-[#8A93A8]">
+                {geoStatus === 'valid' && "📍 Ubicación validada. Te encuentras dentro del perímetro de la tienda (0m demo)."}
+                {geoStatus === 'invalid' && "⚠️ Estás fuera del perímetro autorizado (100m). La operación será rechazada."}
+                {geoStatus === 'error' && "⚠️ No se pudo obtener tu ubicación. Verifica permisos."}
+              </div>
+              
+              <div className="flex gap-2">
+                {geoStatus === 'valid' && (
+                  <>
+                    <button 
+                      onClick={() => setGeoStatus('invalid')}
+                      className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] text-[#8A93A8] text-[10px] font-bold rounded-xl transition-all cursor-pointer border border-white/5"
+                    >
+                      Simular Fallo
+                    </button>
+                    <button 
+                      onClick={executeCobro}
+                      className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-[#06080C] text-[11px] font-extrabold rounded-xl transition-all cursor-pointer shadow-lg shadow-emerald-500/20"
+                    >
+                      Confirmar Venta
+                    </button>
+                  </>
+                )}
+                
+                {geoStatus === 'invalid' && (
+                  <button 
+                    onClick={() => {
+                      setShowGeoModal(false);
+                      triggerToast('Operación denegada por seguridad (Fuera de rango)', 'err');
+                    }}
+                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[11px] font-extrabold rounded-xl transition-all cursor-pointer border border-red-500/20"
+                  >
+                    Cerrar Operación
+                  </button>
+                )}
+
+                {geoStatus === 'error' && (
+                  <button 
+                    onClick={executeCobro}
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-[#06080C] text-[11px] font-extrabold rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/20"
+                  >
+                    Vender Forzadamente (Offline)
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

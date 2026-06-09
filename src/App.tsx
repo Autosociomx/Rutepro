@@ -13,10 +13,9 @@ import { ConfigScreen } from './components/ConfigScreen';
 import { RepartidorScreen } from './components/RepartidorScreen';
 import { MostradorScreen } from './components/MostradorScreen';
 import { AdminScreen } from './components/AdminScreen';
-import { AffiliateScreen } from './components/AffiliateScreen';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo' | 'afiliados'>('landing');
+  const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('landing');
   const [cfg, setCfg] = useState<AppConfig>({
     nombre: '',
     letra: '',
@@ -171,10 +170,21 @@ export default function App() {
     }
 
     try {
+      // Create backup of real user state before demo
+      const existingCfg = localStorage.getItem('rp_cfg');
+      if (existingCfg) localStorage.setItem('rp_cfg_backup', existingCfg);
+      
+      const existingVentas = localStorage.getItem('rp_ventas');
+      if (existingVentas) localStorage.setItem('rp_ventas_backup', existingVentas);
+
+      const existingDevol = localStorage.getItem('rp_devoluciones');
+      if (existingDevol) localStorage.setItem('rp_devoluciones_backup', existingDevol);
+
       localStorage.setItem('rp_cfg', JSON.stringify(demoConfig));
 
       // 2. Erase previous transaction logs to offer a squeaky-clean analytical chart
       localStorage.removeItem('rp_ventas');
+      localStorage.removeItem('rp_devoluciones');
       setCfg(demoConfig);
       applyThemeColor(demoSel.color);
 
@@ -282,25 +292,48 @@ export default function App() {
 
   const handleCerrarSesion = async () => {
     try {
-      // 1. Effortlessly wipe local state caches synchronously so transition is immediate
+      // 1. Wipe demo cache
       localStorage.removeItem('rp_cfg');
       localStorage.removeItem('rp_ventas');
+      localStorage.removeItem('rp_devoluciones');
       
-      setCfg({
+      let nextCfg = {
         nombre: '',
         letra: '',
         subtitulo: 'App del vendedor · RoutePro',
         color_principal: '#C9912A',
         productos: [],
         vendedores: []
-      });
-      applyThemeColor('#C9912A');
-      setCurrentScreen('landing');
-      triggerToast('Sesión de demo reiniciada exitosamente');
+      };
 
-      // 2. Silently try to delete the shared database configuration layout
+      // 2. See if there is a backup of a REAL session to restore
+      const dBackup = localStorage.getItem('rp_cfg_backup');
+      const vBackup = localStorage.getItem('rp_ventas_backup');
+      const devBackup = localStorage.getItem('rp_devoluciones_backup');
+      if (dBackup) {
+        try {
+          nextCfg = JSON.parse(dBackup);
+          localStorage.setItem('rp_cfg', dBackup);
+          if (vBackup) localStorage.setItem('rp_ventas', vBackup);
+          if (devBackup) localStorage.setItem('rp_devoluciones', devBackup);
+        } catch (e) {
+          console.error('Failed to restore backup', e);
+        }
+      }
+
+      // Cleanup backups
+      localStorage.removeItem('rp_cfg_backup');
+      localStorage.removeItem('rp_ventas_backup');
+      localStorage.removeItem('rp_devoluciones_backup');
+      
+      setCfg(nextCfg);
+      applyThemeColor(nextCfg.color_principal || '#C9912A');
+      setCurrentScreen('landing');
+      triggerToast('Sesión de demo finalizada, normalidad restaurada');
+
+      // 3. Silently try to reset the shared database configuration layout
       try {
-        await deleteDoc(doc(db, 'config', 'global'));
+        await setDoc(doc(db, 'config', 'global'), nextCfg);
       } catch (dbErr) {
         console.log('[Info] Configuración remota persistida por otros usuarios del sandbox.', dbErr);
       }
@@ -349,6 +382,8 @@ export default function App() {
           cfg={cfg} 
           onGoBack={() => setCurrentScreen('landing')} 
           triggerToast={triggerToast}
+          onGoConfig={() => setCurrentScreen('configuracion')}
+          onCerrarSesion={handleCerrarSesion}
         />
       )}
 
@@ -423,14 +458,6 @@ export default function App() {
             )}
           </div>
         </div>
-      )}
-
-      {currentScreen === 'afiliados' && (
-        <AffiliateScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
-          triggerToast={triggerToast}
-        />
       )}
 
       {/* TOAST SYSTEM */}

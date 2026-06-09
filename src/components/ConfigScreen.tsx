@@ -828,22 +828,49 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
               </div>
             ) : (
               productos.map((prod) => (
-                <div key={prod.id} className="bg-[#181D2B] border border-white/5 rounded-xl p-3 flex items-center gap-3">
-                  <div className="text-xl w-9 h-9 rounded-lg bg-[#0B0E14] border border-white/5 flex items-center justify-center shrink-0">
-                    {prod.icono || '📦'}
+                <div key={prod.id} className="bg-[#181D2B] border border-white/5 rounded-xl p-3 flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="text-xl w-9 h-9 rounded-lg bg-[#0B0E14] border border-white/5 flex items-center justify-center shrink-0">
+                      {prod.icono || '📦'}
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="text-xs font-bold text-white truncate">{prod.nombre} ({prod.unidad})</div>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteProduct(prod.id)}
+                      className="w-8 h-8 rounded-lg bg-red-400/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 text-xs flex items-center justify-center shrink-0 cursor-pointer"
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <div className="text-xs font-bold text-white truncate">{prod.nombre}</div>
-                    <div className="text-[10px] text-[#8A93A8] mt-0.5">
-                      ${(prod.precio / 100).toFixed(2)} / {prod.unidad}
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 flex flex-col text-left">
+                      <label className="text-[9px] text-[#8A93A8]">Precio (ctvs)</label>
+                      <input 
+                        type="number"
+                        value={prod.precio}
+                        onChange={(e) => {
+                          const newPrice = parseInt(e.target.value) || 0;
+                          setProductos(productos.map(p => p.id === prod.id ? { ...p, precio: newPrice } : p));
+                        }}
+                        className="bg-[#0B0E14] border border-white/5 p-1.5 rounded-lg text-xs text-white"
+                      />
+                    </div>
+                    <div className="flex-1 flex flex-col text-left">
+                      <label className="text-[9px] text-[#8A93A8]">Piezas x Caja (opc)</label>
+                      <input 
+                        type="number"
+                        value={prod.piezasPorCaja || ''}
+                        onChange={(e) => {
+                          const valStr = e.target.value;
+                          const newPiezas = valStr ? parseInt(valStr) || 0 : undefined;
+                          setProductos(productos.map(p => p.id === prod.id ? { ...p, piezasPorCaja: newPiezas } : p));
+                        }}
+                        className="bg-[#0B0E14] border border-white/5 p-1.5 rounded-lg text-xs text-white"
+                        placeholder="Ej: 8"
+                      />
                     </div>
                   </div>
-                  <button 
-                    onClick={() => handleDeleteProduct(prod.id)}
-                    className="w-8 h-8 rounded-lg bg-red-400/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 text-xs flex items-center justify-center shrink-0 cursor-pointer"
-                  >
-                    ✕
-                  </button>
                 </div>
               ))
             )}

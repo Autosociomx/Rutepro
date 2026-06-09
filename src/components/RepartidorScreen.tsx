@@ -6,6 +6,7 @@ import { Product, Seller, AppConfig, Devolucion } from '../types';
 interface ClientSaleRecord {
   id: string;
   nombre: string;
+  tipoNegocio?: string;
   productos: { id: string; nombre: string; pr: number; icono: string; q: number }[];
   tipoCobro: 'efectivo' | 'credito';
   total: number;
@@ -39,6 +40,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
   // New Client Modal state
   const [showCliModal, setShowCliModal] = useState(false);
   const [newCliName, setNewCliName] = useState('');
+  const [newCliType, setNewCliType] = useState('Abarrotes');
 
   // Route AI Chat state
   const [chatInp, setChatInp] = useState('');
@@ -59,7 +61,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     // Load local devoluciones for this seller
     const localDevs = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
-    const activeDevs = localDevs.filter((d: any) => d.vendedorId === vnd.id);
+    const activeDevs = (localDevs as Devolucion[]).filter((d: Devolucion) => d.vendedorId === vnd.id);
     setDevoluciones(activeDevs);
 
     triggerToast(`Ruta iniciada para ${vnd.nombre}`);
@@ -160,6 +162,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     const newCliRecord = {
       id: saleId,
       nombre: newCliName.trim(),
+      tipoNegocio: newCliType,
       productos: [...cartRep],
       tipoCobro: tipoRep,
       total: tot,
@@ -167,32 +170,32 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       timestamp: Date.now()
     };
 
+    const ventaDocData = {
+      id: saleId,
+      vendedorId: selectedSeller!.id,
+      vendedorNombre: selectedSeller!.nombre,
+      clienteId: 'C_ROUTE_' + Date.now(),
+      clienteNombre: newCliName.trim(),
+      clienteTipo: newCliType,
+      monto: tot,
+      tipoCobro: tipoRep === 'efectivo' ? 'efectivo' : 'crédito',
+      items: cartRep.map(item => ({
+        id: item.id,
+        nombre: item.nombre,
+        q: item.q,
+        pr: item.pr,
+        ic: item.icono
+      })),
+      timestamp: Date.now()
+    };
+    
     try {
-      // Direct Firestore sync to lock in the audit logs in real-time
-      const ventaDocData = {
-        id: saleId,
-        vendedorId: selectedSeller.id,
-        vendedorNombre: selectedSeller.nombre,
-        clienteId: 'C_ROUTE_' + Date.now(),
-        clienteNombre: newCliName.trim(),
-        monto: tot,
-        tipoCobro: tipoRep === 'efectivo' ? 'efectivo' : 'crédito',
-        items: cartRep.map(item => ({
-          id: item.id,
-          nombre: item.nombre,
-          q: item.q,
-          pr: item.pr,
-          ic: item.icono
-        })),
-        timestamp: Date.now()
-      };
-      
-      try {
-        await setDoc(doc(db, 'ventas', saleId), ventaDocData);
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, `ventas/${saleId}`);
-      }
+      await setDoc(doc(db, 'ventas', saleId), ventaDocData);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `ventas/${saleId}`);
+    }
 
+    try {
       // Save locally to local sales lists in localStorage
       const prevLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
       prevLocal.push({
@@ -207,12 +210,13 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       setCliHoy([...cliHoy, newCliRecord]);
       setCartRep([]);
       setNewCliName('');
+      setNewCliType('Abarrotes');
       setTipoRep('efectivo');
       setShowCliModal(false);
       triggerToast(`✓ Cliente registrado · ${formatPrice(tot)}`);
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      triggerToast('Error al escribir en la base de datos', 'err');
+      triggerToast('Error con almacenamiento de ruta', 'err');
     }
   };
 
@@ -250,9 +254,10 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         body: JSON.stringify({
           question: qStr,
           config_negocio: cfg,
-          ventas: cliHoy.map((c: any) => ({
+          ventas: cliHoy.map((c: ClientSaleRecord) => ({
             vendedor_nombre: selectedSeller?.nombre,
             cliente_nombre: c.nombre,
+            cliente_tipo: c.tipoNegocio,
             monto: c.total,
             tipo_cobro: c.tipoCobro,
             productos: c.productos,
@@ -422,7 +427,10 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
                       {c.nombre[0]?.toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0 text-left">
-                      <div className="text-xs font-bold text-white truncate">{c.nombre}</div>
+                      <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                        {c.nombre}
+                        {c.tipoNegocio && <span className="bg-[#E8B04A]/10 text-[#E8B04A] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">{c.tipoNegocio}</span>}
+                      </div>
                       <div className="text-[10px] text-[#8A93A8] mt-0.5">
                         {c.hora} · {c.tipoCobro === 'efectivo' ? '💵 Efectivo' : '📋 Crédito'}
                       </div>
@@ -518,11 +526,14 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               cliHoy.map((c, i) => (
                 <div key={i} className="bg-[#111520] border border-white/5 rounded-xl p-3 flex flex-col gap-2.5">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-bold text-white">{c.nombre}</span>
-                    <span className="text-[10px] font-mono text-[#8A93A8]">{c.hora}</span>
+                    <div className="text-xs font-bold text-white truncate flex items-center gap-1.5 flex-1 min-w-0">
+                      {c.nombre}
+                      {c.tipoNegocio && <span className="bg-[#E8B04A]/10 text-[#E8B04A] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">{c.tipoNegocio}</span>}
+                    </div>
+                    <span className="text-[10px] font-mono text-[#8A93A8] shrink-0">{c.hora}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {c.productos.map((p: any, idx: number) => (
+                    {c.productos.map((p, idx) => (
                       <span key={idx} className="inline-flex items-center gap-1 text-[9px] bg-[#181D2B] border border-white/5 px-2 py-1 rounded text-[#8A93A8]">
                         <span>{p.icono}</span> 
                         <span>{p.nombre} ({p.q}x)</span>
@@ -692,6 +703,21 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               />
             </div>
 
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Tipo de Negocio / Giro</label>
+              <div className="flex flex-wrap gap-1.5">
+                {['Abarrotes', 'Miscelánea', 'Depósito', 'Materias Primas', 'Restaurante', 'Otro'].map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setNewCliType(t)}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg cursor-pointer transition-all ${newCliType === t ? 'bg-[#E8B04A] text-black shadow-[0_0_10px_rgba(232,176,74,0.3)]' : 'bg-[#181D2B] border border-white/5 text-[#8A93A8] hover:text-white'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Configured Products Grid to dynamically click & add */}
             <div className="space-y-1.5">
               <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Selecciona Productos</label>
@@ -715,15 +741,47 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               <div className="space-y-1">
                 <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Artículos Cargados ({cartRep.reduce((sum, item) => sum + item.q, 0)}x)</label>
                 <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
-                  {cartRep.map((item, idx) => (
-                    <div key={idx} className="bg-[#111520] border border-white/5 rounded-lg py-1.5 px-3 flex items-center justify-between gap-3 text-xs">
-                      <span className="shrink-0">{item.icono}</span>
-                      <span className="flex-1 font-bold text-white text-left truncate">{item.nombre}</span>
-                      <span className="text-[10px] text-[#8A93A8]">{formatPrice(item.pr)} c/u</span>
-                      <span className="font-mono text-[10px] text-[#E8B04A] font-bold bg-[#181D2B] border border-white/5 rounded px-2.5 py-0.5 shrink-0">{item.q}x</span>
-                      <button onClick={() => handleRemoveCartRep(idx)} className="text-red-400 hover:text-red-300 ml-1 shrink-0">✕</button>
-                    </div>
-                  ))}
+                  {cartRep.map((item, idx) => {
+                    const prodRef = cfg.productos.find(p => p.id === item.id);
+                    return (
+                      <div key={idx} className="bg-[#111520] border border-white/5 rounded-lg py-1.5 px-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 flex-1 min-w-[50%]">
+                          <span className="shrink-0">{item.icono}</span>
+                          <span className="font-bold text-white truncate">{item.nombre}</span>
+                          <span className="text-[10px] text-[#8A93A8] shrink-0">{formatPrice(item.pr)} c/u</span>
+                        </div>
+                        <div className="flex items-center gap-2 justify-end">
+                          {prodRef?.piezasPorCaja && (
+                            <button 
+                              onClick={() => {
+                                const updated = [...cartRep];
+                                updated[idx].q += (prodRef.piezasPorCaja || 1) - 1; // It already added 1 on click, but for a new click +caja
+                                setCartRep(updated);
+                              }}
+                              className="text-[9px] font-bold bg-[#181D2B] border border-white/5 text-[#E8B04A] px-2 py-1 rounded cursor-pointer shrink-0"
+                            >
+                              +Caja ({prodRef.piezasPorCaja})
+                            </button>
+                          )}
+                          <div className="flex border border-white/5 bg-[#0B0E14] rounded overflow-hidden w-16">
+                            <input 
+                              type="number" 
+                              value={item.q === 0 ? '' : item.q} 
+                              onChange={(e) => {
+                                const valStr = e.target.value;
+                                const newQ = valStr === '' ? 0 : parseInt(valStr);
+                                const updated = [...cartRep];
+                                updated[idx].q = isNaN(newQ) ? 0 : newQ;
+                                setCartRep(updated);
+                              }}
+                              className="w-full bg-transparent text-center text-[10px] text-[#E8B04A] font-bold p-1 focus:outline-none"
+                            />
+                          </div>
+                          <button onClick={() => handleRemoveCartRep(idx)} className="text-red-400 hover:text-red-300 w-6 h-6 flex items-center justify-center shrink-0 cursor-pointer">✕</button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
