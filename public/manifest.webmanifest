@@ -1,0 +1,20 @@
+{
+  "name": "RoutePro Elite — Sistema de Distribución",
+  "short_name": "RoutePro",
+  "description": "Gestión de rutas de reparto, mostrador y cierres para negocios de distribución.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06080C",
+  "theme_color": "#06080C",
+  "lang": "es-MX",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

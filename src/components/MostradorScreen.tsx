@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from '../types';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
@@ -161,11 +161,9 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
       timestamp: Date.now()
     };
 
-    try {
-      await setDoc(doc(db, 'ventas', saleId), saleDocData);
-    } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, `ventas/${saleId}`);
-    }
+    // Fire-and-forget: la cola offline de Firestore sincroniza al volver la señal
+    setDoc(doc(db, 'ventas', saleId), saleDocData)
+      .catch(e => console.error(`Firestore ventas/${saleId}:`, e));
 
     try {
       // Log locally inside localStorage cache

@@ -53,6 +53,8 @@ export interface Venta {
   items: VentaItem[];
   timestamp: number;
   hora?: string;
+  lat?: number;  // geolocalización del punto de venta — ruta de migajas
+  lng?: number;
 }
 
 export interface Devolucion {
@@ -79,7 +81,9 @@ export interface InventarioKilo {
 }
 
 export interface InventarioRuta {
+  id?: string;
   vendedorId: string;
+  vendedorNombre?: string;
   items: InventarioKilo[];
   timestamp: number;
   estado: 'activa' | 'finalizado';
