@@ -108,6 +108,19 @@ export interface RutaMetric {
   liquido_final: number;
 }
 
+export interface Usuario {
+  uid: string;
+  nombre: string;
+  email: string;
+  telefono: string;
+  plan: 'trial' | 'activo' | 'cancelado';
+  aviso_privacidad: boolean;
+  aviso_privacidad_ts: number;
+  created_at: number;
+  stripe_customer_id?: string; // Phase 2 — Stripe billing
+  ciudad?: string;
+}
+
 export interface AppConfig {
   nombre: string;
   letra: string;

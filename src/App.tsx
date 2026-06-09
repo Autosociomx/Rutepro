@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
 
@@ -8,6 +8,7 @@ import { Product, Seller, AppConfig } from './types';
 import { DEMOS, DemoConfig } from './data';
 
 // Modular Workspace Screens
+import { AuthScreen } from './components/AuthScreen';
 import { LandingScreen } from './components/LandingScreen';
 import { ConfigScreen } from './components/ConfigScreen';
 import { RepartidorScreen } from './components/RepartidorScreen';
@@ -15,7 +16,8 @@ import { MostradorScreen } from './components/MostradorScreen';
 import { AdminScreen } from './components/AdminScreen';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('landing');
+  const [currentScreen, setCurrentScreen] = useState<'auth' | 'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('auth');
+  const [authChecked, setAuthChecked] = useState(false);
   const [cfg, setCfg] = useState<AppConfig>({
     nombre: '',
     letra: '',
@@ -71,10 +73,20 @@ export default function App() {
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
 
-  // Ensure anonymous auth before any Firestore access
+  // Auth state listener — show AuthScreen only on first visit (no persisted session)
   useEffect(() => {
-    signInAnonymously(auth).catch(console.warn);
-  }, []);
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!authChecked) {
+        setAuthChecked(true);
+        if (user) {
+          // User already has a session (email or anonymous) — go straight to app
+          if (currentScreen === 'auth') setCurrentScreen('landing');
+        }
+        // If no user, stay on 'auth' screen
+      }
+    });
+    return () => unsub();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real-time Firestore synchronization on mount for the corporate setup
   useEffect(() => {
@@ -105,16 +117,6 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Perform Firebase Anonymous sign-in on boot to secure writes in Firestore
-  useEffect(() => {
-    signInAnonymously(auth)
-      .then((userCred) => {
-        console.log('Signed in anonymously as:', userCred.user.uid);
-      })
-      .catch((err) => {
-        console.warn('Anonymous sign-in failed or resumed:', err);
-      });
-  }, []);
 
   const handleSaveConfig = async (newCfg: AppConfig) => {
     let cloudSaved = false;
@@ -363,10 +365,17 @@ export default function App() {
 
   return (
     <div className="bg-[#06080C] min-h-screen">
+      {currentScreen === 'auth' && (
+        <AuthScreen
+          onSuccess={() => setCurrentScreen('landing')}
+          triggerToast={triggerToast}
+        />
+      )}
+
       {currentScreen === 'landing' && (
-        <LandingScreen 
-          cfg={cfg} 
-          onGo={(screen: any) => setCurrentScreen(screen)} 
+        <LandingScreen
+          cfg={cfg}
+          onGo={(screen: any) => setCurrentScreen(screen)}
           onCerrarSesion={handleCerrarSesion}
         />
       )}
