@@ -513,12 +513,20 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               </button>
             </div>
 
-            <button 
-              onClick={handleNuevaRuta} 
-              className="w-full py-4.5 hover:brightness-105 rounded-xl text-xs font-extrabold tracking-wide text-ink cursor-pointer bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 transition-all text-center block"
-            >
-              🔄 Nueva Ruta / Nueva Jornada
-            </button>
+            <div className="flex gap-2.5">
+              <button
+                onClick={handleNuevaRuta}
+                className="flex-1 py-4.5 hover:brightness-105 rounded-xl text-xs font-extrabold tracking-wide cursor-pointer bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 transition-all text-center"
+              >
+                🔄 Nueva Ruta
+              </button>
+              <button
+                onClick={onGoBack}
+                className="flex-1 py-4.5 hover:brightness-105 rounded-xl text-xs font-extrabold tracking-wide cursor-pointer bg-[#111520] border border-white/10 text-[#8A93A8] hover:text-white transition-all text-center"
+              >
+                🏠 Salir al Inicio
+              </button>
+            </div>
           </div>
         )}
 
