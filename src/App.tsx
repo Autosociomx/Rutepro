@@ -15,6 +15,7 @@ import { ConfigScreen } from './components/ConfigScreen';
 import { RepartidorScreen } from './components/RepartidorScreen';
 import { MostradorScreen } from './components/MostradorScreen';
 import { AdminScreen } from './components/AdminScreen';
+import { WelcomeModal } from './components/WelcomeModal';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'auth' | 'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('auth');
@@ -42,6 +43,7 @@ export default function App() {
 
   const [demoSel, setDemoSel] = useState<DemoConfig | null>(null);
   const [demoNameInput, setDemoNameInput] = useState('');
+  const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem('rp_welcome_seen'));
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
@@ -219,27 +221,19 @@ export default function App() {
     setDemoNameInput(demo.businessName);
   };
 
-  const handleLaunchDemoObject = async () => {
-    if (!demoSel) {
-      triggerToast('Por favor selecciona un tipo de negocio', 'err');
-      return;
-    }
-
-    const customName = demoNameInput.trim() || demoSel.businessName;
-
+  const launchDemo = async (demo: DemoConfig, customName: string) => {
     const demoConfig = {
       nombre: customName,
       letra: customName[0].toUpperCase(),
-      subtitulo: `Demo activa · ${demoSel.nombre}`,
-      color_principal: demoSel.color,
-      productos: demoSel.productos,
-      vendedores: demoSel.vendedores,
-      tipo_negocio: demoSel.id
+      subtitulo: `Demo activa · ${demo.nombre}`,
+      color_principal: demo.color,
+      productos: demo.productos,
+      vendedores: demo.vendedores,
+      tipo_negocio: demo.id
     };
 
     let cloudSaved = false;
     try {
-      // 1. Write the new demo configuration
       await setDoc(doc(db, 'config', 'global'), demoConfig);
       cloudSaved = true;
     } catch (e) {
@@ -247,35 +241,29 @@ export default function App() {
     }
 
     try {
-      // Create backup of real user state before demo
       const existingCfg = localStorage.getItem('rp_cfg');
       if (existingCfg) localStorage.setItem('rp_cfg_backup', existingCfg);
-      
       const existingVentas = localStorage.getItem('rp_ventas');
       if (existingVentas) localStorage.setItem('rp_ventas_backup', existingVentas);
-
       const existingDevol = localStorage.getItem('rp_devoluciones');
       if (existingDevol) localStorage.setItem('rp_devoluciones_backup', existingDevol);
 
       localStorage.setItem('rp_cfg', JSON.stringify(demoConfig));
-
-      // 2. Erase previous transaction logs to offer a squeaky-clean analytical chart
       localStorage.removeItem('rp_ventas');
       localStorage.removeItem('rp_devoluciones');
       setCfg(demoConfig);
-      applyThemeColor(demoSel.color);
+      applyThemeColor(demo.color);
 
-      // Seed 2 ventas de muestra para que el dashboard no aparezca vacío en la demo
       const now = Date.now();
-      const p0 = demoSel.productos[0];
-      const p2 = demoSel.productos[2];
+      const p0 = demo.productos[0];
+      const p2 = demo.productos[2];
       const q0 = p0?.vendePorMonto ? 2.5 : 3;
       const q2 = p2?.vendePorMonto ? 1.2 : 5;
       const mockVentas = [
         {
-          id: 'S_MOCK_1', tipo_negocio: demoSel.id,
-          vendedorId: demoSel.vendedores[0]?.id || 'V1',
-          vendedorNombre: demoSel.vendedores[0]?.nombre || 'Ana Ruiz',
+          id: 'S_MOCK_1', tipo_negocio: demo.id,
+          vendedorId: demo.vendedores[0]?.id || 'V1',
+          vendedorNombre: demo.vendedores[0]?.nombre || 'Ana Ruiz',
           clienteId: 'C_MOCK_1', clienteNombre: 'Abarrotes El Tulipán',
           monto: Math.round((p0?.precio || 1500) * q0), tipoCobro: 'efectivo',
           items: [{ id: p0?.id || 'P1', nombre: p0?.nombre || 'Item A', q: q0,
@@ -286,9 +274,9 @@ export default function App() {
           hora: new Date(now - 3600000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
         },
         {
-          id: 'S_MOCK_2', tipo_negocio: demoSel.id,
-          vendedorId: demoSel.vendedores[1]?.id || 'V2',
-          vendedorNombre: demoSel.vendedores[1]?.nombre || 'Pedro Leal',
+          id: 'S_MOCK_2', tipo_negocio: demo.id,
+          vendedorId: demo.vendedores[1]?.id || 'V2',
+          vendedorNombre: demo.vendedores[1]?.nombre || 'Pedro Leal',
           clienteId: 'C_MOCK_2', clienteNombre: 'Ricos Tacos Imperial',
           monto: Math.round((p2?.precio || 2000) * q2), tipoCobro: 'credito',
           items: [{ id: p2?.id || 'P3', nombre: p2?.nombre || 'Item C', q: q2,
@@ -301,18 +289,26 @@ export default function App() {
       ];
       localStorage.setItem('rp_ventas', JSON.stringify(mockVentas));
 
-      if (cloudSaved) {
-        triggerToast(`✓ Demo iniciada para ${customName} con saldo en cero`);
-      } else {
-        triggerToast(`✓ Demo iniciada localmente para ${customName} con saldo en cero`);
-      }
+      triggerToast(cloudSaved
+        ? `✓ Demo iniciada para ${customName} con saldo en cero`
+        : `✓ Demo iniciada localmente para ${customName} con saldo en cero`
+      );
       setDemoSel(null);
       setDemoNameInput('');
+      setShowWelcome(false);
       setCurrentScreen('landing');
     } catch (e) {
       console.error(e);
       triggerToast('Error al inicializar la base de datos de ejemplo', 'err');
     }
+  };
+
+  const handleLaunchDemoObject = async () => {
+    if (!demoSel) {
+      triggerToast('Por favor selecciona un tipo de negocio', 'err');
+      return;
+    }
+    await launchDemo(demoSel, demoNameInput.trim() || demoSel.businessName);
   };
 
   // Safe HTML rendering to avoid XSS from dynamic data sources while styling specific words
@@ -431,6 +427,13 @@ export default function App() {
           triggerToast={triggerToast}
           onGoConfig={() => setCurrentScreen('configuracion')}
           onCerrarSesion={handleCerrarSesion}
+        />
+      )}
+
+      {currentScreen === 'landing' && showWelcome && (
+        <WelcomeModal
+          onLaunchDemo={(demo, name) => launchDemo(demo, name)}
+          onDismiss={() => setShowWelcome(false)}
         />
       )}
 
