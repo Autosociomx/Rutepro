@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
 import { Product, Seller, AppConfig, Devolucion, InventarioKilo } from '../types';
+import { validateSale } from '../utils/syncEngine';
 
 interface ClientSaleRecord {
   id: string;
@@ -63,7 +64,6 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
   const handleSelectSeller = (vnd: Seller) => {
     setSelectedSeller(vnd);
     setHoraIni(new Date());
-    setCliHoy([]);
     setCartRep([]);
     setTipoRep('efectivo');
     setActiveTab('ped');
@@ -72,7 +72,28 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setGeoPath([]);
     setCargaInputs({});
 
-    // Load local devoluciones for this seller
+    // 1. Reconstruct today's shift clients/sales from local rp_ventas to prevent data loss in offline mode
+    const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
+    const activeSales = localSales.filter((s: any) => s.vendedorId === vnd.id);
+    const mappedCliHoy: ClientSaleRecord[] = activeSales.map((s: any) => ({
+      id: s.id,
+      nombre: s.clienteNombre || 'Cliente',
+      tipoNegocio: s.clienteTipo || 'Abarrotes',
+      productos: (s.items || []).map((it: any) => ({
+        id: it.id,
+        nombre: it.nombre,
+        pr: it.pr,
+        icono: it.ic || '📦',
+        q: it.q
+      })),
+      tipoCobro: s.tipoCobro === 'crédito' ? 'credito' : 'efectivo',
+      total: s.monto || 0,
+      hora: s.hora || new Date(s.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+      timestamp: s.timestamp || Date.now()
+    }));
+    setCliHoy(mappedCliHoy);
+
+    // 2. Load local mermas/devoluciones for this seller
     const localDevs = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
     const activeDevs = (localDevs as Devolucion[]).filter((d: Devolucion) => d.vendedorId === vnd.id);
     setDevoluciones(activeDevs);
@@ -185,10 +206,12 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       timestamp: Date.now()
     };
 
+    // 1. Guardar de forma local e inmediata para garantizar resiliencia OFFLINE completa
     try {
       // Fire-and-forget: la cola offline de Firestore sincroniza al volver la señal
       setDoc(doc(db, 'devoluciones', devolId), newDevol)
         .catch(e => console.error(`Firestore devoluciones/${devolId}:`, e));
+
 
       // Save locally to local devoluciones list in localStorage
       const prevLocal = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
@@ -204,9 +227,19 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       setShowDevolModal(false);
       triggerToast(`✓ Merma registrada: ${newDevol.cantidad} ${prod.unidad} de ${prod.nombre}`);
     } catch (e) {
-      console.error(e);
-      triggerToast('Error al escribir en la base de datos', 'err');
+      console.error('Error al guardar localmente la devolución:', e);
+      triggerToast('Error con almacenamiento de merma local', 'err');
     }
+
+    // 2. Sincronización en segundo plano con la nube sin bloquear el flujo real del repartidor
+    setDoc(doc(db, 'devoluciones', devolId), newDevol)
+      .then(() => {
+        console.log(`✓ Merma ${devolId} sincronizada exitosamente con la nube.`);
+      })
+      .catch((err) => {
+        console.warn(`Firestore backup stalled or offline for devoluciones/${devolId}:`, err);
+        // No lanzamos error ni bloqueamos al repartidor. El cache offline de Firestore lo subirá cuando vuelva la señal.
+      });
   };
 
   const handleAddCartRep = (prod: Product) => {
@@ -275,7 +308,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       clienteNombre: newCliName.trim(),
       clienteTipo: newCliType,
       monto: tot,
-      tipoCobro: tipoRep === 'efectivo' ? 'efectivo' : 'crédito',
+      tipoCobro: (tipoRep === 'efectivo' ? 'efectivo' : 'crédito') as 'efectivo' | 'crédito',
       items: cartRep.map(item => ({
         id: item.id,
         nombre: item.nombre,
@@ -284,15 +317,21 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         ic: item.icono
       })),
       timestamp: Date.now(),
-      ...(geo ? { lat: geo.lat, lng: geo.lng } : {})
+      ...(geo ? { lat: geo.lat, lng: geo.lng } : {}),
+      validado: true,
+      sincronizado: false
     };
 
     if (geo) setGeoPath(prev => [...prev, { ...geo, t: Date.now() }]);
 
-    // Fire-and-forget: la cola offline de Firestore sincroniza al volver la señal
-    setDoc(doc(db, 'ventas', saleId), ventaDocData)
-      .catch(e => console.error(`Firestore ventas/${saleId}:`, e));
-
+    // Real-time local verification/validation of distributor sale
+    const validationResult = validateSale(ventaDocData);
+    if (!validationResult.isValid) {
+      triggerToast(`Fallo de Validación: ${validationResult.reason}`, 'err');
+      return;
+    }
+    
+    // 1. Guardar de forma local e inmediata para evitar cualquier bloqueo en venta de ruta OFFLINE
     try {
       // Save locally to local sales lists in localStorage
       const prevLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
@@ -313,9 +352,44 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       setShowCliModal(false);
       triggerToast(`✓ Cliente registrado · ${formatPrice(tot)}`);
     } catch (e) {
-      console.error(e);
-      triggerToast('Error con almacenamiento de ruta', 'err');
+      console.error('Error al guardar localmente de ruta:', e);
+      triggerToast('Error con almacenamiento de ruta local', 'err');
     }
+
+    // 2. Sincronización en segundo plano con la nube sin retrasar la transacción real en puerta
+    const cleanDbData = {
+      id: ventaDocData.id,
+      vendedorId: ventaDocData.vendedorId,
+      vendedorNombre: ventaDocData.vendedorNombre,
+      clienteId: ventaDocData.clienteId,
+      clienteNombre: ventaDocData.clienteNombre,
+      clienteTipo: ventaDocData.clienteTipo,
+      monto: ventaDocData.monto,
+      tipoCobro: ventaDocData.tipoCobro,
+      items: ventaDocData.items,
+      timestamp: ventaDocData.timestamp,
+      validado: true
+    };
+
+    setDoc(doc(db, 'ventas', saleId), cleanDbData)
+      .then(() => {
+        console.log(`✓ Venta de ruta ${saleId} sincronizada con la nube.`);
+        // Mark as synchronized in local storage
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
+          const idx = currentLocal.findIndex((x: any) => x.id === saleId);
+          if (idx !== -1) {
+            currentLocal[idx].sincronizado = true;
+            localStorage.setItem('rp_ventas', JSON.stringify(currentLocal));
+          }
+        } catch (storageErr) {
+          console.warn('Could not update sync flag in local cache:', storageErr);
+        }
+      })
+      .catch((err) => {
+        console.warn(`Firestore backup stalled or offline for ventas/${saleId}:`, err);
+        // No bloqueamos. El cache offline robusto de Firestore sincronizará cuando consiga internet.
+      });
   };
 
   const handleTerminarRuta = () => {

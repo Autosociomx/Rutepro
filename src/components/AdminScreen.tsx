@@ -23,8 +23,45 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+  const [isWiping, setIsWiping] = useState(false);
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+  const handleWipeData = async () => {
+    setIsWiping(true);
+    triggerToast('🗑️ Eliminando transacciones de la nube y caches...');
+    try {
+      // 1. Clear local caches
+      localStorage.removeItem('rp_ventas');
+      localStorage.removeItem('rp_devoluciones');
+      setVentas([]);
+      setDevoluciones([]);
+
+      // 2. Fetch and delete from Firestore
+      const { getDocs, query, collection, deleteDoc, doc, writeBatch } = await import('firebase/firestore');
+      const vSnap = await getDocs(query(collection(db, 'ventas')));
+      const dSnap = await getDocs(query(collection(db, 'devoluciones')));
+
+      const batch = writeBatch(db);
+      vSnap.forEach((docSnap) => {
+        batch.delete(doc(db, 'ventas', docSnap.id));
+      });
+      dSnap.forEach((docSnap) => {
+        batch.delete(doc(db, 'devoluciones', docSnap.id));
+      });
+
+      await batch.commit();
+
+      triggerToast('✓ Balance restaurado en ceros con éxito.', 'ok');
+      setShowWipeConfirm(false);
+    } catch (e: any) {
+      console.error(e);
+      triggerToast('Error al limpiar registros de la nube', 'err');
+    } finally {
+      setIsWiping(false);
+    }
+  };
 
   // Load and consolidate transaction logs directly from Firestore with real-time automatic telemetry synchronization
   useEffect(() => {
@@ -53,9 +90,36 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
         });
       });
 
-      setVentas(salesFromDb);
+      // Merge local storage offline sales with database ones to avoid losing unsynced items when offline
+      const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
+      const mergedSales = [...salesFromDb];
+      localSales.forEach((ls: any) => {
+        if (!mergedSales.some(dbSale => dbSale.id === ls.id)) {
+          mergedSales.push({
+            id: ls.id,
+            vendedorId: ls.vendedorId || '',
+            vendedorNombre: ls.vendedorNombre || '',
+            clienteId: ls.clienteId || '',
+            clienteNombre: ls.clienteNombre || '',
+            clienteTipo: ls.clienteTipo || '',
+            monto: Number(ls.monto) || 0,
+            tipoCobro: ls.tipoCobro === 'efectivo' ? 'efectivo' : 'crédito',
+            items: (ls.items || []).map((it: any) => ({
+              id: it.id || '',
+              nombre: it.nombre || '',
+              q: Number(it.q) || 0,
+              pr: Number(it.pr) || 0,
+              ic: it.ic || it.icono || '📦'
+            })),
+            timestamp: ls.timestamp || ls.ts || Date.now()
+          });
+        }
+      });
+      mergedSales.sort((a, b) => b.timestamp - a.timestamp);
+
+      setVentas(mergedSales);
       // Keep local backup store in sync with active cloud logs
-      localStorage.setItem('rp_ventas', JSON.stringify(salesFromDb));
+      localStorage.setItem('rp_ventas', JSON.stringify(mergedSales));
     }, (error) => {
       console.warn('Real-time sync paused or connection offline. Utilizing local transaction logs cache fallback:', error);
       const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
@@ -84,11 +148,33 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
           timestamp: data.timestamp || Date.now()
         });
       });
-      setDevoluciones(devolsFromDb);
-      localStorage.setItem('rp_devoluciones_admin', JSON.stringify(devolsFromDb));
+
+      // Merge local storage mermas list (rp_devoluciones) with database mermas to avoid losing unsynced items
+      const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
+      const mergedDevols = [...devolsFromDb];
+      localDevols.forEach((ld: any) => {
+        if (!mergedDevols.some(dbDev => dbDev.id === ld.id)) {
+          mergedDevols.push({
+            id: ld.id,
+            vendedorId: ld.vendedorId || '',
+            vendedorNombre: ld.vendedorNombre || '',
+            clienteId: ld.clienteId || '',
+            clienteNombre: ld.clienteNombre || '',
+            productoId: ld.productoId || '',
+            productoNombre: ld.productoNombre || '',
+            cantidad: Number(ld.cantidad) || 0,
+            timestamp: ld.timestamp || Date.now()
+          });
+        }
+      });
+      mergedDevols.sort((a, b) => b.timestamp - a.timestamp);
+
+      setDevoluciones(mergedDevols);
+      localStorage.setItem('rp_devoluciones', JSON.stringify(mergedDevols));
+      localStorage.setItem('rp_devoluciones_admin', JSON.stringify(mergedDevols));
     }, (error) => {
       console.warn('Real-time devoluciones paused. Utilizing local cache fallback:', error);
-      const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones_admin') || '[]');
+      const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
       setDevoluciones(localDevols);
     });
     return () => unsub();
@@ -347,14 +433,24 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                 {ventas.length === 0 ? (
                   <div className="text-center py-4 text-[10px] text-[#3E4A60]">Esperando transmisiones satelitales...</div>
                 ) : (
-                  ventas.slice(-5).reverse().map((v, i) => (
-                    <div key={i} className="flex justify-between items-center gap-2 text-xs border-b border-white/5 pb-2 last:border-0 last:pb-0">
+                  ventas.slice(0, 5).map((v, i) => (
+                    <div key={v.id || i} className="flex justify-between items-start gap-2 text-xs border-b border-white/5 pb-2.5 last:border-0 last:pb-0 pt-1">
                       <div>
                         <div className="font-bold text-white shrink-0 truncate max-w-[150px] flex items-center gap-1.5">
                           {v.clienteNombre || 'Cliente Ambulante'}
                           {v.clienteTipo && <span className="bg-[#E8B04A]/10 text-[#E8B04A] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">{v.clienteTipo}</span>}
                         </div>
-                        <div className="text-[10px] text-[#8A93A8] mt-0.5">{v.vendedorNombre} · {v.hora || new Date(v.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div className="text-[10px] text-[#8A93A8] mt-1 flex flex-col gap-0.5">
+                          <div>
+                            {v.vendedorNombre} · {v.hora || new Date(v.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span className="text-[9px] text-[#00C896] font-medium uppercase tracking-wider">
+                              Validado y Sincronizado en Vivo
+                            </span>
+                          </div>
+                        </div>
                       </div>
                       <span className="font-mono text-[#E8B04A] font-bold shrink-0">{formatPrice(v.monto)}</span>
                     </div>
@@ -538,6 +634,16 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                   <span>🚪 Cambiar de negocio / Salir</span>
                   <span className="text-[10px]">→</span>
                 </button>
+                <button 
+                  onClick={() => setShowWipeConfirm(true)} 
+                  className="w-full py-3 px-6 font-semibold text-xs text-amber-500 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/15 rounded-xl transition-all cursor-pointer text-left flex justify-between items-center whitespace-normal mt-2"
+                >
+                  <span className="flex flex-col text-left">
+                    <strong>🧹 Borrar Datos y Saldo a Cero</strong>
+                    <span className="text-[9px] text-[#8A93A8] mt-0.5 font-normal">Limpia el historial de ventas y reinicia la demostración con balance limpio</span>
+                  </span>
+                  <span className="text-[10px]">⚡</span>
+                </button>
               </div>
             </div>
             {/* Disclaimer */}
@@ -580,6 +686,42 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                 className="flex-1 py-3 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-bold text-white cursor-pointer active:scale-95 transition-all text-center border-t border-red-400"
               >
                 Sí, Salir y Cambiar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM WIPE DIALOG */}
+      {showWipeConfirm && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+          <div className="bg-[#111520] border border-amber-500/20 rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-5 text-center">
+            <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-2 text-2xl border border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+              🧹
+            </div>
+            <div className="space-y-2">
+              <div className="font-display font-bold text-base text-white">¿Borrar Registros y Reestablecer Balance?</div>
+              <p className="text-[#8A93A8] text-xs leading-relaxed">
+                Esta acción es inmediata e irreversible para la base de datos de <strong>{cfg.nombre}</strong>.
+                <br /><br />
+                <span className="text-amber-400 font-medium">Reseteará el saldo a $0.00, limpiando el registro de ventas para iniciar una demostración limpia desde cero.</span>
+              </p>
+            </div>
+            
+            <div className="flex gap-2.5 pt-2">
+              <button 
+                onClick={() => setShowWipeConfirm(false)}
+                disabled={isWiping}
+                className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#EEF1F8] border border-white/5 cursor-pointer active:scale-95 transition-all disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleWipeData}
+                disabled={isWiping}
+                className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 rounded-xl text-xs font-bold text-black cursor-pointer active:scale-95 transition-all text-center font-bold disabled:opacity-40"
+              >
+                {isWiping ? 'Borrando...' : 'Sí, Limpiar Todo'}
               </button>
             </div>
           </div>

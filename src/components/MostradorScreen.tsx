@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from '../types';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import { validateSale } from '../utils/syncEngine';
 
 const API_KEY =
   process.env.GOOGLE_MAPS_PLATFORM_KEY ||
@@ -29,6 +30,11 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
   const [qtyMode, setQtyMode] = useState<'cantidad' | 'monto'>('cantidad');
   const [cantInput, setCantInput] = useState('1');
   const [montoInput, setMontoInput] = useState('');
+
+  // Cajero selector (Gemini): cajero/ambos roles fallback a cualquier vendedor
+  const cashiersList = cfg.vendedores.filter(v => v.rol === 'cajero' || v.rol === 'ambos');
+  const availableCashiers = cashiersList.length > 0 ? cashiersList : cfg.vendedores;
+  const [selectedCajero, setSelectedCajero] = useState<Seller | null>(() => availableCashiers[0] || null);
   
   // Geolocation states
   const [showGeoModal, setShowGeoModal] = useState(false);
@@ -140,15 +146,17 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
     const saleId = 'S' + Date.now();
     const nowStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
+    const activeCajero = selectedCajero || { id: 'v_mostrador', nombre: 'Mostrador local', rol: 'cajero', ruta: 'Mostrador' };
+
     const saleDocData = {
       id: saleId,
       tipo_negocio: cfg.tipo_negocio || 'custom',
-      vendedorId: 'v_mostrador',
-      vendedorNombre: 'Mostrador local',
+      vendedorId: activeCajero.id,
+      vendedorNombre: activeCajero.nombre,
       clienteId: 'C_WALKIN_' + Date.now(),
       clienteNombre: 'Cliente de Mostrador',
       monto: tot,
-      tipoCobro: paymentType === 'tarjeta' ? 'crédito' : 'efectivo',
+      tipoCobro: paymentType === 'tarjeta' ? 'crédito' : 'efectivo' as const,
       items: cartMos.map(item => ({
         id: item.id,
         nombre: item.nombre,
@@ -158,13 +166,21 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
         unidad: item.unidad,
         modo_venta: item.modo_venta || 'por_cantidad'
       })),
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      validado: true, // Mark validated 
+      sincronizado: false // marked unsynced initially
     };
 
-    // Fire-and-forget: la cola offline de Firestore sincroniza al volver la señal
+    // Validar antes de persistir (Gemini), luego fire-and-forget offline (Claude)
+    const validationResult = validateSale(saleDocData);
+    if (!validationResult.isValid) {
+      triggerToast(`Fallo de Validación: ${validationResult.reason}`, 'err');
+      return;
+    }
     setDoc(doc(db, 'ventas', saleId), saleDocData)
       .catch(e => console.error(`Firestore ventas/${saleId}:`, e));
 
+    // 1. Guardar de forma local e inmediata para evitar cualquier bloqueo en mostrador OFFLINE
     try {
       // Log locally inside localStorage cache
       const prevLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
@@ -181,8 +197,42 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
       setShowGeoModal(false);
     } catch (err: any) {
       console.error(err);
-      triggerToast('Error con almacenamiento de venta', 'err');
+      triggerToast('Error con almacenamiento de venta local', 'err');
     }
+
+    // 2. Sincronización en segundo plano con la nube sin retrasar la transacción real en mostrador
+    const cleanDbData = {
+      id: saleDocData.id,
+      vendedorId: saleDocData.vendedorId,
+      vendedorNombre: saleDocData.vendedorNombre,
+      clienteId: saleDocData.clienteId,
+      clienteNombre: saleDocData.clienteNombre,
+      monto: saleDocData.monto,
+      tipoCobro: saleDocData.tipoCobro,
+      items: saleDocData.items,
+      timestamp: saleDocData.timestamp,
+      validado: true
+    };
+
+    setDoc(doc(db, 'ventas', saleId), cleanDbData)
+      .then(() => {
+        console.log(`✓ Venta de mostrador ${saleId} sincronizada con la nube.`);
+        // Mark as synchronized in local storage
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
+          const idx = currentLocal.findIndex((x: any) => x.id === saleId);
+          if (idx !== -1) {
+            currentLocal[idx].sincronizado = true;
+            localStorage.setItem('rp_ventas', JSON.stringify(currentLocal));
+          }
+        } catch (storageErr) {
+          console.warn('Could not update sync flag in local cache:', storageErr);
+        }
+      })
+      .catch((err) => {
+        console.warn(`Firestore backup stalled or offline for ventas/${saleId}:`, err);
+        // El cache offline robusto de Firestore sincronizará cuando consiga internet.
+      });
   };
 
   const handleImpTicket = () => {
@@ -261,9 +311,26 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
               <span style={{ color: cfg.color_principal || '#00C896' }} className="text-xs font-extrabold">{cfg.letra}</span>
             )}
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs font-bold text-white truncate">{cfg.nombre}</div>
-            <div className="text-[10px] text-[#8A93A8] mt-0.5">Mostrador Registradora</div>
+            {availableCashiers.length > 1 ? (
+              <select
+                value={selectedCajero?.id || ''}
+                onChange={(e) => {
+                  const target = availableCashiers.find(x => x.id === e.target.value);
+                  if (target) setSelectedCajero(target);
+                }}
+                className="bg-[#111520] border border-white/10 text-[10px] text-emerald-400 font-bold rounded px-1.5 py-0.5 mt-0.5 focus:outline-none cursor-pointer max-w-[140px]"
+              >
+                {availableCashiers.map(c => (
+                  <option key={c.id} value={c.id} className="text-white bg-[#111520]">{c.nombre}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="text-[10px] text-[#8A93A8] mt-0.5">
+                Cajero: <span className="text-emerald-400 font-bold">{selectedCajero?.nombre || 'Mostrador local'}</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
