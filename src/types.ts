@@ -7,10 +7,9 @@ export interface Product {
   id: string;
   nombre: string;
   precio: number; // Price in cents, e.g. 500 = $5.00
-  icono?: string;
-  unidad: string; // 'kg', 'pza', 'lt', 'gr', 'caja', 'pac', etc.
-  piezasPorCaja?: number;
-  vendePorMonto?: boolean; // if true, Mostrador shows peso-amount picker (ej: tortillas, carne)
+  icono?: string; // Emoji representing the product
+  unidad: string; // 'kg', 'pza', 'lt', etc.
+  piezasPorCaja?: number; // Configurable quantity per box/package
   precioPorKg?: number; // fallback compatibility
 }
 
@@ -19,8 +18,8 @@ export interface Seller {
   nombre: string;
   rol: 'repartidor' | 'cajero' | 'ambos';
   ruta: string;
-  meta_diaria?: number; // in cents, e.g. 500000 = $5,000.00
-  vehiculo?: string;
+  vehiculo?: string; // fallback compatibility
+  meta_diaria?: number; // Daily sales goal in cents, e.g. 500000 = $5,000.00 pesos
 }
 
 export interface Client {
@@ -53,8 +52,6 @@ export interface Venta {
   items: VentaItem[];
   timestamp: number;
   hora?: string;
-  lat?: number;  // geolocalización del punto de venta — ruta de migajas
-  lng?: number;
 }
 
 export interface Devolucion {
@@ -81,9 +78,7 @@ export interface InventarioKilo {
 }
 
 export interface InventarioRuta {
-  id?: string;
   vendedorId: string;
-  vendedorNombre?: string;
   items: InventarioKilo[];
   timestamp: number;
   estado: 'activa' | 'finalizado';
@@ -112,19 +107,6 @@ export interface RutaMetric {
   liquido_final: number;
 }
 
-export interface Usuario {
-  uid: string;
-  nombre: string;
-  email: string;
-  telefono: string;
-  plan: 'trial' | 'activo' | 'cancelado';
-  aviso_privacidad: boolean;
-  aviso_privacidad_ts: number;
-  created_at: number;
-  stripe_customer_id?: string; // Phase 2 — Stripe billing
-  ciudad?: string;
-}
-
 export interface AppConfig {
   nombre: string;
   letra: string;
@@ -133,8 +115,23 @@ export interface AppConfig {
   productos: Product[];
   vendedores: Seller[];
   logo_url?: string;
-  tipo_negocio?: string; // 'pan'|'tort'|'agua'|'carn'|'dist'|'custom' — dataset enrichment
-  ciudad?: string;       // free text — 'Tijuana'|'CDMX'|'Monterrey' etc.
-  pin_admin?: string;
 }
+
+export interface MysteryAudit {
+  id: string;
+  vendedorId: string;
+  vendedorNombre: string;
+  fecha: string;
+  auditor: string;
+  checks: {
+    cobroExacto: boolean;
+    entregaRecibo: boolean;
+    presentacionLimpia: boolean;
+    tratoAmable: boolean;
+  };
+  calificacion: number; // percentage (e.g. 100)
+  notas?: string;
+  timestamp: number;
+}
+
 

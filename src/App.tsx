@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth, handleFirestoreError, OperationType } from './firebase';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { db, handleFirestoreError, OperationType, auth } from './firebase';
+import { signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
 import { syncLocalTransactions } from './utils/syncEngine';
@@ -9,7 +9,6 @@ import { syncLocalTransactions } from './utils/syncEngine';
 import { DEMOS, DemoConfig } from './data';
 
 // Modular Workspace Screens
-import { AuthScreen } from './components/AuthScreen';
 import { LandingScreen } from './components/LandingScreen';
 import { ConfigScreen } from './components/ConfigScreen';
 import { RepartidorScreen } from './components/RepartidorScreen';
@@ -17,8 +16,7 @@ import { MostradorScreen } from './components/MostradorScreen';
 import { AdminScreen } from './components/AdminScreen';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'auth' | 'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('auth');
-  const [authChecked, setAuthChecked] = useState(false);
+  const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('landing');
   const [cfg, setCfg] = useState<AppConfig>({
     nombre: 'Tostadas Nayaritas',
     letra: 'TN',
@@ -85,21 +83,6 @@ export default function App() {
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
 
-  // Auth state listener — show AuthScreen only on first visit (no persisted session)
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (!authChecked) {
-        setAuthChecked(true);
-        if (user) {
-          // User already has a session (email or anonymous) — go straight to app
-          if (currentScreen === 'auth') setCurrentScreen('landing');
-        }
-        // If no user, stay on 'auth' screen
-      }
-    });
-    return () => unsub();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Real-time Firestore synchronization on mount for the corporate setup
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'config', 'global'), (docSnap) => {
@@ -156,6 +139,16 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // Perform Firebase Anonymous sign-in on boot to secure writes in Firestore
+  useEffect(() => {
+    signInAnonymously(auth)
+      .then((userCred) => {
+        console.log('Signed in anonymously as:', userCred.user.uid);
+      })
+      .catch((err) => {
+        console.warn('Anonymous sign-in failed or resumed:', err);
+      });
+  }, []);
 
   // Setup real-time background sync engine for offline operations
   useEffect(() => {
@@ -233,8 +226,7 @@ export default function App() {
       subtitulo: `Demo activa · ${demoSel.nombre}`,
       color_principal: demoSel.color,
       productos: demoSel.productos,
-      vendedores: demoSel.vendedores,
-      tipo_negocio: demoSel.id
+      vendedores: demoSel.vendedores
     };
 
     let cloudSaved = false;
@@ -265,41 +257,9 @@ export default function App() {
       setCfg(demoConfig);
       applyThemeColor(demoSel.color);
 
-      // Seed 2 ventas de muestra para que el dashboard no aparezca vacío en la demo
-      const now = Date.now();
-      const p0 = demoSel.productos[0];
-      const p2 = demoSel.productos[2];
-      const q0 = p0?.vendePorMonto ? 2.5 : 3;
-      const q2 = p2?.vendePorMonto ? 1.2 : 5;
-      const mockVentas = [
-        {
-          id: 'S_MOCK_1', tipo_negocio: demoSel.id,
-          vendedorId: demoSel.vendedores[0]?.id || 'V1',
-          vendedorNombre: demoSel.vendedores[0]?.nombre || 'Ana Ruiz',
-          clienteId: 'C_MOCK_1', clienteNombre: 'Abarrotes El Tulipán',
-          monto: Math.round((p0?.precio || 1500) * q0), tipoCobro: 'efectivo',
-          items: [{ id: p0?.id || 'P1', nombre: p0?.nombre || 'Item A', q: q0,
-            pr: p0?.precio || 1500, ic: p0?.icono || '📦',
-            unidad: p0?.unidad || 'pza', modo_venta: p0?.vendePorMonto ? 'por_monto' : 'por_cantidad' }],
-          timestamp: now - 3600000, validado: true, sincronizado: true,
-          prod_resumen: `${p0?.icono || '📦'}${p0?.nombre || 'Item'} (${q0}${p0?.unidad || 'x'})`,
-          hora: new Date(now - 3600000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-        },
-        {
-          id: 'S_MOCK_2', tipo_negocio: demoSel.id,
-          vendedorId: demoSel.vendedores[1]?.id || 'V2',
-          vendedorNombre: demoSel.vendedores[1]?.nombre || 'Pedro Leal',
-          clienteId: 'C_MOCK_2', clienteNombre: 'Ricos Tacos Imperial',
-          monto: Math.round((p2?.precio || 2000) * q2), tipoCobro: 'credito',
-          items: [{ id: p2?.id || 'P3', nombre: p2?.nombre || 'Item C', q: q2,
-            pr: p2?.precio || 2000, ic: p2?.icono || '🧁',
-            unidad: p2?.unidad || 'pza', modo_venta: p2?.vendePorMonto ? 'por_monto' : 'por_cantidad' }],
-          timestamp: now - 1800000, validado: true, sincronizado: true,
-          prod_resumen: `${p2?.icono || '🧁'}${p2?.nombre || 'Item'} (${q2}${p2?.unidad || 'x'})`,
-          hora: new Date(now - 1800000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-        }
-      ];
-      localStorage.setItem('rp_ventas', JSON.stringify(mockVentas));
+      // Start with exactly zero balance and zero sales as requested
+      const mockVentas: any[] = [];
+      localStorage.setItem('rp_ventas', JSON.stringify([]));
 
       if (cloudSaved) {
         triggerToast(`✓ Demo iniciada para ${customName} con saldo en cero`);
@@ -383,17 +343,10 @@ export default function App() {
 
   return (
     <div className="bg-[#06080C] min-h-screen">
-      {currentScreen === 'auth' && (
-        <AuthScreen
-          onSuccess={() => setCurrentScreen('landing')}
-          triggerToast={triggerToast}
-        />
-      )}
-
       {currentScreen === 'landing' && (
-        <LandingScreen
-          cfg={cfg}
-          onGo={(screen: any) => setCurrentScreen(screen)}
+        <LandingScreen 
+          cfg={cfg} 
+          onGo={(screen: any) => setCurrentScreen(screen)} 
           onCerrarSesion={handleCerrarSesion}
           onSaveConfig={handleSaveConfig}
           triggerToast={triggerToast}

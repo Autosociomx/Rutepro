@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Product, Seller, Venta, VentaItem, AppConfig, Devolucion } from '../types';
+import { Product, Seller, Venta, VentaItem, AppConfig, Devolucion, MysteryAudit } from '../types';
 
 interface AdminScreenProps {
   cfg: AppConfig;
@@ -15,6 +15,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   const [activeTab, setActiveTab] = useState<'res' | 'rutas' | 'alertas' | 'ia' | 'sys'>('res');
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [devoluciones, setDevoluciones] = useState<Devolucion[]>([]);
+  const [mysteryAudits, setMysteryAudits] = useState<MysteryAudit[]>([]);
 
   // Asesor chat states
   const [chatInp, setChatInp] = useState('');
@@ -26,6 +27,17 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
 
+  // Mystery modal state
+  const [showMysteryModal, setShowMysteryModal] = useState(false);
+  const [mSelectedSellerId, setMSelectedSellerId] = useState('');
+  const [mAuditorName, setMAuditorName] = useState('Auditor Incógnito #1');
+  const [mCheckCobro, setMCheckCobro] = useState(true);
+  const [mCheckRecibo, setMCheckRecibo] = useState(true);
+  const [mCheckPresentacion, setMCheckPresentacion] = useState(true);
+  const [mCheckTrato, setMCheckTrato] = useState(true);
+  const [mNotas, setMNotas] = useState('');
+  const [isSubmittingAudit, setIsSubmittingAudit] = useState(false);
+
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
   const handleWipeData = async () => {
@@ -35,13 +47,16 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       // 1. Clear local caches
       localStorage.removeItem('rp_ventas');
       localStorage.removeItem('rp_devoluciones');
+      localStorage.removeItem('rp_mystery_audits');
       setVentas([]);
       setDevoluciones([]);
+      setMysteryAudits([]);
 
       // 2. Fetch and delete from Firestore
       const { getDocs, query, collection, deleteDoc, doc, writeBatch } = await import('firebase/firestore');
       const vSnap = await getDocs(query(collection(db, 'ventas')));
       const dSnap = await getDocs(query(collection(db, 'devoluciones')));
+      const mSnap = await getDocs(query(collection(db, 'mystery_audits')));
 
       const batch = writeBatch(db);
       vSnap.forEach((docSnap) => {
@@ -50,16 +65,85 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       dSnap.forEach((docSnap) => {
         batch.delete(doc(db, 'devoluciones', docSnap.id));
       });
+      mSnap.forEach((docSnap) => {
+        batch.delete(doc(db, 'mystery_audits', docSnap.id));
+      });
 
       await batch.commit();
 
-      triggerToast('✓ Balance restaurado en ceros con éxito.', 'ok');
+      triggerToast('✓ Balance y auditorías restauradas en ceros con éxito.', 'ok');
       setShowWipeConfirm(false);
     } catch (e: any) {
       console.error(e);
       triggerToast('Error al limpiar registros de la nube', 'err');
     } finally {
       setIsWiping(false);
+    }
+  };
+
+  const handleCreateMysteryAudit = async () => {
+    if (!mSelectedSellerId) {
+      triggerToast('Por favor, selecciona un vendedor para auditar.', 'err');
+      return;
+    }
+    const targetSeller = cfg.vendedores.find(v => v.id === mSelectedSellerId);
+    if (!targetSeller) {
+      triggerToast('Vendedor no encontrado.', 'err');
+      return;
+    }
+
+    setIsSubmittingAudit(true);
+    triggerToast('⏳ Sincronizando auditoría misteriosa...');
+
+    // Calculate score based on active checks
+    let correctChecks = 0;
+    if (mCheckCobro) correctChecks++;
+    if (mCheckRecibo) correctChecks++;
+    if (mCheckPresentacion) correctChecks++;
+    if (mCheckTrato) correctChecks++;
+    const calif = Math.round((correctChecks / 4) * 100);
+
+    const auditId = 'M_AUDIT_' + Date.now();
+    const auditObj: MysteryAudit = {
+      id: auditId,
+      vendedorId: targetSeller.id,
+      vendedorNombre: targetSeller.nombre,
+      fecha: new Date().toLocaleDateString('es-MX'),
+      auditor: mAuditorName.trim() || 'Auditor Anónimo',
+      checks: {
+        cobroExacto: mCheckCobro,
+        entregaRecibo: mCheckRecibo,
+        presentacionLimpia: mCheckPresentacion,
+        tratoAmable: mCheckTrato
+      },
+      calificacion: calif,
+      notas: mNotas.trim(),
+      timestamp: Date.now()
+    };
+
+    try {
+      // 1. Save to cloud
+      await setDoc(doc(db, 'mystery_audits', auditId), auditObj);
+      
+      // 2. Save locally
+      const prev = JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]');
+      localStorage.setItem('rp_mystery_audits', JSON.stringify([auditObj, ...prev]));
+      
+      triggerToast('✓ Auditoría de Cliente Misterioso registrada y sincronizada en vivo.', 'ok');
+      setShowMysteryModal(false);
+      
+      // Reset state
+      setMNotas('');
+      setMAuditorName('Auditor Incógnito #1');
+      setMCheckCobro(true);
+      setMCheckRecibo(true);
+      setMCheckPresentacion(true);
+      setMCheckTrato(true);
+    } catch (err) {
+      console.error(err);
+      triggerToast('Error al registrar auditoría en la nube', 'err');
+    } finally {
+      setIsSubmittingAudit(false);
     }
   };
 
@@ -177,6 +261,37 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
       setDevoluciones(localDevols);
     });
+
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore subscription for Mystery Shop Audits
+  useEffect(() => {
+    const q = query(collection(db, 'mystery_audits'), orderBy('timestamp', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const auditsFromDb: MysteryAudit[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        auditsFromDb.push({
+          id: docSnap.id,
+          vendedorId: data.vendedorId || '',
+          vendedorNombre: data.vendedorNombre || '',
+          fecha: data.fecha || '',
+          auditor: data.auditor || '',
+          checks: data.checks || { cobroExacto: true, entregaRecibo: true, presentacionLimpia: true, tratoAmable: true },
+          calificacion: Number(data.calificacion) || 100,
+          notas: data.notas || '',
+          timestamp: data.timestamp || Date.now()
+        });
+      });
+      setMysteryAudits(auditsFromDb);
+      localStorage.setItem('rp_mystery_audits', JSON.stringify(auditsFromDb));
+    }, (error) => {
+      console.warn('Real-time mystery audits paused. Utilizing local cache fallback:', error);
+      const local = JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]');
+      setMysteryAudits(local);
+    });
+
     return () => unsub();
   }, []);
 
@@ -458,6 +573,100 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                 )}
               </div>
             </div>
+
+            {/* Mystery Shop Auditing Panel */}
+            <div className="bg-[#111520] border border-amber-500/10 rounded-xl p-4 space-y-4 shadow-[0_0_15px_rgba(232,176,74,0.02)]">
+              <div className="flex justify-between items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base text-[#E8B04A]">🕵️‍♂️</span>
+                  <div>
+                    <div className="text-xs font-bold text-white uppercase tracking-wider">Cliente Misterioso (Mystery Shop)</div>
+                    <div className="text-[9px] text-[#8A93A8]">Auditoría de precios y estándares de trato en ruta</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (cfg.vendedores.length > 0) {
+                      setMSelectedSellerId(cfg.vendedores[0].id);
+                    }
+                    setShowMysteryModal(true);
+                  }}
+                  className="bg-[#E8B04A]/10 hover:bg-[#E8B04A]/20 border border-amber-500/20 text-xs font-bold text-[#E8B04A] py-1.5 px-3 rounded-lg flex items-center gap-1 cursor-pointer transition-all active:scale-95 shrink-0"
+                >
+                  <span>⚡ Auditar</span>
+                </button>
+              </div>
+
+              {/* Statistical Summary */}
+              {mysteryAudits.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2 bg-[#0B0E14] border border-white/5 p-2.5 rounded-lg text-center">
+                  <div>
+                    <div className="text-lg font-mono font-bold text-[#00C896]">
+                      {Math.round(mysteryAudits.reduce((sum, a) => sum + a.calificacion, 0) / mysteryAudits.length)}%
+                    </div>
+                    <div className="text-[8px] uppercase font-bold tracking-wider text-[#3E4A60] mt-0.5">Rating Promedio</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-mono font-bold text-[#4A8FFF]">
+                      {mysteryAudits.length}
+                    </div>
+                    <div className="text-[8px] uppercase font-bold tracking-wider text-[#3E4A60] mt-0.5">Auditorías Hechas</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-[#0B0E14] border border-white/5 p-3 rounded-lg text-center text-[10px] text-[#3E4A60]">
+                  No se han registrado auditorías de Cliente Misterioso hoy. Pulsa el botón "⚡ Auditar" para registrar una inspección en vivo.
+                </div>
+              )}
+
+              {/* Historial of Audits */}
+              {mysteryAudits.length > 0 && (
+                <div className="space-y-2.5 max-h-[250px] overflow-y-auto no-scrollbar pr-0.5">
+                  {mysteryAudits.slice(0, 5).map((aud) => {
+                    const scoreColor = aud.calificacion >= 80 ? 'text-[#00C896] bg-[#00C896]/10 border-[#00C896]/20' : aud.calificacion >= 50 ? 'text-[#E8B04A] bg-[#E8B04A]/10 border-[#E8B04A]/20' : 'text-red-400 bg-red-400/10 border-red-400/20';
+                    return (
+                      <div key={aud.id} className="bg-[#181D2B] border border-white/5 p-3 rounded-lg space-y-2 text-left">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                              <span>👤 {aud.vendedorNombre}</span>
+                            </div>
+                            <div className="text-[8px] text-[#8A93A8] mt-0.5">
+                              {aud.auditor} · {aud.fecha}
+                            </div>
+                          </div>
+                          <span className={`text-[10px] font-mono font-extrabold py-0.5 px-2 rounded-full border ${scoreColor} shrink-0`}>
+                            {aud.calificacion}%
+                          </span>
+                        </div>
+
+                        {/* Detailed mini checks checklist bar */}
+                        <div className="flex flex-wrap gap-1.5 text-[8px] font-mono">
+                          <span className={`px-1.5 py-0.5 rounded flex items-center gap-0.5 font-bold uppercase tracking-wider ${aud.checks.cobroExacto ? 'bg-[#00C896]/10 text-[#00C896]' : 'bg-red-400/10 text-red-400'}`}>
+                            {aud.checks.cobroExacto ? '✓' : '✗'} Cobro
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded flex items-center gap-0.5 font-bold uppercase tracking-wider ${aud.checks.entregaRecibo ? 'bg-[#00C896]/10 text-[#00C896]' : 'bg-red-400/10 text-red-400'}`}>
+                            {aud.checks.entregaRecibo ? '✓' : '✗'} Recibo
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded flex items-center gap-0.5 font-bold uppercase tracking-wider ${aud.checks.presentacionLimpia ? 'bg-[#00C896]/10 text-[#00C896]' : 'bg-red-400/10 text-red-400'}`}>
+                            {aud.checks.presentacionLimpia ? '✓' : '✗'} Orden
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded flex items-center gap-0.5 font-bold uppercase tracking-wider ${aud.checks.tratoAmable ? 'bg-[#00C896]/10 text-[#00C896]' : 'bg-red-400/10 text-red-400'}`}>
+                            {aud.checks.tratoAmable ? '✓' : '✗'} Trato
+                          </span>
+                        </div>
+
+                        {aud.notas && (
+                          <p className="text-[9px] text-[#8A93A8] leading-normal italic line-clamp-2 bg-[#0B0E14] p-1.5 rounded border border-white/5">
+                            "{aud.notas}"
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -472,8 +681,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
               {cfg.vendedores.map((v) => {
                 const vndSales = ventas.filter(x => x.vendedorId === v.id);
                 const vndTot = vndSales.reduce((sum, item) => sum + (item.monto || 0), 0);
-                const metaDiaria = v.meta_diaria || 500000;
-                const progressPct = Math.min(100, Math.round((vndTot / metaDiaria) * 100));
+                const sellerMeta = v.meta_diaria || 500000;
+                const progressPct = Math.min(100, Math.round((vndTot / sellerMeta) * 100));
                 
                 return (
                   <div key={v.id} className="bg-[#111520] border border-white/5 rounded-xl p-3.5 space-y-3">
@@ -495,7 +704,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center text-[9px] text-[#8A93A8]">
-                        <span>Meta: {formatPrice(metaDiaria)}</span>
+                        <span>Meta Diaria de Venta (${(sellerMeta / 100).toFixed(0)})</span>
                         <span className="font-bold text-[#00C896]">{progressPct}%</span>
                       </div>
                       <div className="h-1 bg-[#181D2B] rounded-full overflow-hidden">
@@ -722,6 +931,145 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                 className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 rounded-xl text-xs font-bold text-black cursor-pointer active:scale-95 transition-all text-center font-bold disabled:opacity-40"
               >
                 {isWiping ? 'Borrando...' : 'Sí, Limpiar Todo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MYSTERY SHOP MODAL */}
+      {showMysteryModal && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#111520] border border-amber-500/20 rounded-2xl p-5 w-full max-w-md shadow-2xl space-y-4 my-8">
+            <div className="flex justify-between items-start border-b border-white/5 pb-3">
+              <div className="text-left">
+                <h3 className="font-display font-bold text-white text-sm">Nueva Auditoría de Cliente Misterioso</h3>
+                <p className="text-[10px] text-[#8A93A8]">Inspección encubierta de estándares operativos en ruta</p>
+              </div>
+              <button 
+                onClick={() => setShowMysteryModal(false)}
+                className="text-[#8A93A8] hover:text-white transition-colors cursor-pointer text-sm font-bold p-1 bg-white/5 rounded"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs text-left">
+              {/* Vendedor selection */}
+              <div className="space-y-1.5">
+                <label className="block text-[#8A93A8] font-semibold text-[10px] uppercase tracking-wider">Vendedor a Auditar</label>
+                <select 
+                  value={mSelectedSellerId}
+                  onChange={(e) => setMSelectedSellerId(e.target.value)}
+                  className="w-full bg-[#181D2B] border border-white/10 text-white rounded-lg p-2.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                >
+                  {cfg.vendedores.map(v => (
+                    <option key={v.id} value={v.id}>{v.nombre} ({v.rol})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Auditor Name */}
+              <div className="space-y-1.5">
+                <label className="block text-[#8A93A8] font-semibold text-[10px] uppercase tracking-wider">Nombre del Auditor Encubierto</label>
+                <input 
+                  type="text"
+                  value={mAuditorName}
+                  onChange={(e) => setMAuditorName(e.target.value)}
+                  placeholder="Ej: Comprador Secreto, Auditor #3"
+                  className="w-full bg-[#181D2B] border border-white/10 text-white rounded-lg p-2.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Checklist Group */}
+              <div className="space-y-2 bg-[#0B0E14] border border-[#3E4A60]/10 p-3 rounded-xl">
+                <span className="block text-[10px] text-amber-400 font-extrabold uppercase tracking-wide mb-1.5">Estándares de Evaluación</span>
+                
+                {/* Check 1 */}
+                <label className="flex items-center gap-2.5 py-1 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={mCheckCobro}
+                    onChange={(e) => setMCheckCobro(e.target.checked)}
+                    className="rounded border-white/10 bg-[#181D2B] text-amber-500 focus:ring-amber-500/20"
+                  />
+                  <div>
+                    <span className="text-white font-bold block text-[11px]">Cobro de Precios del Catálogo</span>
+                    <span className="text-[9px] text-[#8A93A8] block font-normal">¿Respetó las tarifas oficiales del catálogo de {cfg.nombre}?</span>
+                  </div>
+                </label>
+
+                {/* Check 2 */}
+                <label className="flex items-center gap-2.5 py-1 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={mCheckRecibo}
+                    onChange={(e) => setMCheckRecibo(e.target.checked)}
+                    className="rounded border-white/10 bg-[#181D2B] text-amber-500 focus:ring-amber-500/20"
+                  />
+                  <div>
+                    <span className="text-white font-bold block text-[11px]">Entrega de Ticket / Recibo</span>
+                    <span className="text-[9px] text-[#8A93A8] block font-normal">¿Se entregó el comprobante y registró la venta en pantalla?</span>
+                  </div>
+                </label>
+
+                {/* Check 3 */}
+                <label className="flex items-center gap-2.5 py-1 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={mCheckPresentacion}
+                    onChange={(e) => setMCheckPresentacion(e.target.checked)}
+                    className="rounded border-white/10 bg-[#181D2B] text-amber-500 focus:ring-amber-500/20"
+                  />
+                  <div>
+                    <span className="text-white font-bold block text-[11px]">Presentación y Limpieza</span>
+                    <span className="text-[9px] text-[#8A93A8] block font-normal">¿La presentación personal y de la mercancía cumple el estándar?</span>
+                  </div>
+                </label>
+
+                {/* Check 4 */}
+                <label className="flex items-center gap-2.5 py-1 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={mCheckTrato}
+                    onChange={(e) => setMCheckTrato(e.target.checked)}
+                    className="rounded border-white/10 bg-[#181D2B] text-amber-500 focus:ring-amber-500/20"
+                  />
+                  <div>
+                    <span className="text-white font-bold block text-[11px]">Trato Cortés y Ágil</span>
+                    <span className="text-[9px] text-[#8A93A8] block font-normal">¿Se mostró con amabilidad y ofreció una buena experiencia?</span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <label className="block text-[#8A93A8] font-semibold text-[10px] uppercase tracking-wider">Observaciones y Notas Operativas</label>
+                <textarea 
+                  value={mNotas}
+                  onChange={(e) => setMNotas(e.target.value)}
+                  rows={2}
+                  placeholder="Detalles sobre lo ocurrido en el punto de contacto..."
+                  className="w-full bg-[#181D2B] border border-white/10 text-white rounded-lg p-2.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Submit */}
+            <div className="flex gap-2.5 pt-2">
+              <button 
+                onClick={() => setShowMysteryModal(false)}
+                disabled={isSubmittingAudit}
+                className="flex-1 py-2.5 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#EEF1F8] border border-white/5 cursor-pointer active:scale-95 transition-all disabled:opacity-40 text-center"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleCreateMysteryAudit}
+                disabled={isSubmittingAudit}
+                className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 text-black font-extrabold rounded-xl text-xs cursor-pointer active:scale-95 transition-all text-center disabled:opacity-40"
+              >
+                {isSubmittingAudit ? 'Registrando...' : '✓ Registrar Auditoría'}
               </button>
             </div>
           </div>
