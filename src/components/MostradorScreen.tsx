@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from '../types';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
@@ -20,11 +20,18 @@ interface MostradorScreenProps {
 
 export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [cartMos, setCartMos] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
+  const [cartMos, setCartMos] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number; unidad?: string; modo_venta?: 'por_cantidad' | 'por_monto' }[]>([]);
   const [paymentType, setPaymentType] = useState<'efectivo' | 'tarjeta'>('efectivo');
   const [showOptionsModal, setShowOptionsModal] = useState(false);
 
-  // Identify cajeros/ambos role sellers, fallback to first/any seller
+  // Quantity/amount picker for fractional products (kg, lt)
+  const [showQtyModal, setShowQtyModal] = useState(false);
+  const [qtyModalProd, setQtyModalProd] = useState<Product | null>(null);
+  const [qtyMode, setQtyMode] = useState<'cantidad' | 'monto'>('cantidad');
+  const [cantInput, setCantInput] = useState('1');
+  const [montoInput, setMontoInput] = useState('');
+
+  // Cajero selector (Gemini): cajero/ambos roles fallback a cualquier vendedor
   const cashiersList = cfg.vendedores.filter(v => v.rol === 'cajero' || v.rol === 'ambos');
   const availableCashiers = cashiersList.length > 0 ? cashiersList : cfg.vendedores;
   const [selectedCajero, setSelectedCajero] = useState<Seller | null>(() => availableCashiers[0] || null);
@@ -36,7 +43,18 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+  const needsPicker = (p: Product) => !!(p.vendePorMonto || p.unidad === 'kg' || p.unidad === 'lt');
+
   const handleAddMos = (prod: Product) => {
+    if (needsPicker(prod)) {
+      const existing = cartMos.find(x => x.id === prod.id);
+      setQtyModalProd(prod);
+      setQtyMode('cantidad');
+      setCantInput(existing ? existing.q.toFixed(2) : '1');
+      setMontoInput('');
+      setShowQtyModal(true);
+      return;
+    }
     const existing = cartMos.find(x => x.id === prod.id);
     if (existing) {
       setCartMos(cartMos.map(x => x.id === prod.id ? { ...x, q: x.q + 1 } : x));
@@ -44,6 +62,44 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
       setCartMos([...cartMos, { id: prod.id, nombre: prod.nombre, pr: prod.precio, icono: prod.icono || '📦', q: 1 }]);
     }
     triggerToast(`✓ ${prod.nombre} agregado`);
+  };
+
+  const handleConfirmQtyModal = () => {
+    if (!qtyModalProd) return;
+    const isMontoMode = qtyMode === 'monto';
+    let qty: number;
+
+    if (isMontoMode) {
+      const montoVal = parseFloat(montoInput);
+      if (!montoVal || montoVal <= 0) { triggerToast('Ingresa un monto válido', 'err'); return; }
+      qty = montoVal / (qtyModalProd.precio / 100);
+    } else {
+      qty = parseFloat(cantInput) || 0;
+      if (qty <= 0) { triggerToast('Ingresa una cantidad válida', 'err'); return; }
+    }
+
+    const cartItem = {
+      id: qtyModalProd.id,
+      nombre: qtyModalProd.nombre,
+      pr: qtyModalProd.precio,
+      icono: qtyModalProd.icono || '📦',
+      q: qty,
+      unidad: qtyModalProd.unidad,
+      modo_venta: isMontoMode ? 'por_monto' as const : 'por_cantidad' as const
+    };
+
+    setCartMos(prev => {
+      const existing = prev.find(x => x.id === qtyModalProd.id);
+      return existing
+        ? prev.map(x => x.id === qtyModalProd.id ? { ...cartItem } : x)
+        : [...prev, cartItem];
+    });
+
+    const label = isMontoMode
+      ? `$${parseFloat(montoInput).toFixed(0)} de ${qtyModalProd.nombre}`
+      : `${qty.toFixed(2)} ${qtyModalProd.unidad} de ${qtyModalProd.nombre}`;
+    triggerToast(`✓ ${label} al carrito`);
+    setShowQtyModal(false);
   };
 
   const handleChangeQty = (index: number, delta: number) => {
@@ -94,6 +150,7 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
 
     const saleDocData = {
       id: saleId,
+      tipo_negocio: cfg.tipo_negocio || 'custom',
       vendedorId: activeCajero.id,
       vendedorNombre: activeCajero.nombre,
       clienteId: 'C_WALKIN_' + Date.now(),
@@ -105,19 +162,23 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
         nombre: item.nombre,
         q: item.q,
         pr: item.pr,
-        ic: item.icono
+        ic: item.icono,
+        unidad: item.unidad,
+        modo_venta: item.modo_venta || 'por_cantidad'
       })),
       timestamp: Date.now(),
       validado: true, // Mark validated 
       sincronizado: false // marked unsynced initially
     };
 
-    // Real-time client-side live validation before commit
+    // Validar antes de persistir (Gemini), luego fire-and-forget offline (Claude)
     const validationResult = validateSale(saleDocData);
     if (!validationResult.isValid) {
       triggerToast(`Fallo de Validación: ${validationResult.reason}`, 'err');
       return;
     }
+    setDoc(doc(db, 'ventas', saleId), saleDocData)
+      .catch(e => console.error(`Firestore ventas/${saleId}:`, e));
 
     // 1. Guardar de forma local e inmediata para evitar cualquier bloqueo en mostrador OFFLINE
     try {
@@ -355,44 +416,58 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
                         <span className="text-lg shrink-0">{item.icono}</span>
                         <div className="flex-1 min-w-0">
                           <div className="text-[10px] font-bold text-white truncate">{item.nombre}</div>
-                          <div className="text-[9px] text-[#8A93A8] mt-0.5">{formatPrice(item.pr)} c/u</div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[9px] text-[#8A93A8]">{formatPrice(item.pr)} c/{item.unidad || 'u'}</span>
+                            {item.modo_venta === 'por_monto' && (
+                              <span className="text-[8px] bg-amber-500/15 border border-amber-500/20 text-amber-400 px-1 py-0.5 rounded font-bold">$</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 justify-end shrink-0 select-none">
                         {prodRef?.piezasPorCaja && (
-                          <button 
+                          <button
                             onClick={() => handleChangeQty(idx, (prodRef.piezasPorCaja || 1) - 1)}
                             className="text-[9px] font-bold bg-[#181D2B] border border-white/5 text-[#E8B04A] px-2 py-1 rounded cursor-pointer"
                           >
                             +Caja ({prodRef.piezasPorCaja})
                           </button>
                         )}
+                        {needsPicker(prodRef || { unidad: item.unidad } as Product) ? (
+                          <button
+                            onClick={() => handleAddMos(prodRef || { id: item.id, nombre: item.nombre, precio: item.pr, icono: item.icono, unidad: item.unidad || 'kg' } as Product)}
+                            className="text-[9px] font-bold bg-[#181D2B] border border-white/5 text-[#8A93A8] hover:text-amber-400 px-2 py-1 rounded cursor-pointer"
+                          >
+                            ✏️ {item.q.toFixed(2)} {item.unidad}
+                          </button>
+                        ) : (
                         <div className="flex border border-white/5 bg-[#0B0E14] rounded overflow-hidden w-16">
-                          <button 
-                            onClick={() => handleChangeQty(idx, -1)} 
+                          <button
+                            onClick={() => handleChangeQty(idx, -1)}
                             className="w-5 flex items-center justify-center bg-[#181D2B]/80 text-[#8A93A8] hover:bg-[#1F2638] cursor-pointer text-xs"
                           >
                             -
                           </button>
-                          <input 
-                            type="number" 
-                            value={item.q === 0 ? '' : item.q} 
+                          <input
+                            type="number"
+                            value={item.q === 0 ? '' : item.q}
                             onChange={(e) => {
                               const valStr = e.target.value;
-                              const newQ = valStr === '' ? 0 : parseInt(valStr);
+                              const newQ = valStr === '' ? 0 : parseFloat(valStr);
                               const updated = [...cartMos];
                               updated[idx].q = isNaN(newQ) ? 0 : newQ;
                               setCartMos(updated);
                             }}
                             className="w-full bg-transparent text-center text-[10px] text-white font-bold px-0 focus:outline-none"
                           />
-                          <button 
-                            onClick={() => handleChangeQty(idx, 1)} 
+                          <button
+                            onClick={() => handleChangeQty(idx, 1)}
                             className="w-5 flex items-center justify-center bg-[#181D2B]/80 text-[#8A93A8] hover:bg-[#1F2638] cursor-pointer text-xs"
                           >
                             +
                           </button>
                         </div>
+                        )}
                         <button onClick={() => {
                           const updated = [...cartMos];
                           updated.splice(idx, 1);
@@ -467,6 +542,96 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
                 className="w-full py-2.5 bg-[#181D2B] hover:bg-[#1F2638] rounded-lg text-xs font-bold text-[#8A93A8] transition-all text-center cursor-pointer"
               >
                 Cerrar Ventana
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QUANTITY / AMOUNT PICKER MODAL (for kg/lt products) */}
+      {showQtyModal && qtyModalProd && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end justify-center p-4 animate-fade-in">
+          <div className="bg-[#111520] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-sm space-y-4 shadow-2xl text-left">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{qtyModalProd.icono || '📦'}</span>
+              <div>
+                <div className="font-display font-bold text-sm text-white">{qtyModalProd.nombre}</div>
+                <div className="text-[10px] text-[#8A93A8]">{formatPrice(qtyModalProd.precio)} por {qtyModalProd.unidad}</div>
+              </div>
+            </div>
+
+            {/* Mode toggle */}
+            <div className="bg-[#0B0E14] rounded-lg p-1 flex gap-1">
+              <button
+                onClick={() => setQtyMode('cantidad')}
+                className={`flex-1 py-2 rounded-md text-[10px] font-bold transition-all cursor-pointer ${qtyMode === 'cantidad' ? 'bg-[#181D2B] text-white' : 'text-[#3E4A60] hover:text-white'}`}
+              >
+                📦 Por {qtyModalProd.unidad}
+              </button>
+              <button
+                onClick={() => setQtyMode('monto')}
+                className={`flex-1 py-2 rounded-md text-[10px] font-bold transition-all cursor-pointer ${qtyMode === 'monto' ? 'bg-[#181D2B] text-amber-400' : 'text-[#3E4A60] hover:text-white'}`}
+              >
+                💵 Por Monto ($)
+              </button>
+            </div>
+
+            {qtyMode === 'cantidad' ? (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Cantidad ({qtyModalProd.unidad})</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.01"
+                  value={cantInput}
+                  onChange={(e) => setCantInput(e.target.value)}
+                  className="bg-[#181D2B] border border-white/5 rounded-lg p-3 text-lg text-white text-center font-bold focus:outline-none focus:border-amber-500"
+                  placeholder={`Ej: 2.5`}
+                  autoFocus
+                />
+                {cantInput && parseFloat(cantInput) > 0 && (
+                  <div className="text-center text-[10px] text-[#8A93A8]">
+                    Subtotal: <span className="text-amber-400 font-bold">{formatPrice(Math.round(parseFloat(cantInput) * qtyModalProd.precio))}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">¿Cuánto le damos? (pesos $)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8A93A8] text-base font-bold pointer-events-none">$</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    value={montoInput}
+                    onChange={(e) => setMontoInput(e.target.value)}
+                    className="bg-[#181D2B] border border-white/5 rounded-lg p-3 pl-8 text-lg text-white text-center font-bold focus:outline-none focus:border-emerald-500 w-full"
+                    placeholder="Ej: 13"
+                    autoFocus
+                  />
+                </div>
+                {montoInput && parseFloat(montoInput) > 0 && (
+                  <div className="text-center text-[10px] text-emerald-400 font-bold">
+                    ≈ {(parseFloat(montoInput) / (qtyModalProd.precio / 100)).toFixed(3)} {qtyModalProd.unidad}
+                    <span className="text-[#8A93A8] font-normal ml-1">({formatPrice(qtyModalProd.precio)}/{qtyModalProd.unidad})</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setShowQtyModal(false)}
+                className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#8A93A8] hover:text-white cursor-pointer transition-all text-center"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmQtyModal}
+                className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 active:scale-97 text-[#06080C] rounded-xl text-xs font-extrabold cursor-pointer transition-all text-center"
+              >
+                ✓ Agregar al Carrito
               </button>
             </div>
           </div>

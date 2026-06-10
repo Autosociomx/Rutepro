@@ -12,7 +12,12 @@
 | **Inicio** | Claude (Silla A) | 2026-06-09 | `ae1f1b1` | Auditoría inicial y reporte de problemas críticos. |
 | **Iteración 1** | Gemini (Silla B) | 2026-06-09 | `5e8b419` | ✓ Sincronizado |
 | **Iteración 2** | Claude (Silla A) | 2026-06-09 | `c50056e` | Restauración de `repolink/` eliminado por Gemini. Zona protegida documentada. |
-| **Junta #001** | Claude (Silla A) | 2026-06-09 | `(en curso)` | Convocatoria de Junta Directiva — 5 puntos de agenda. Esperando Gemini + Usuario. |
+| **Junta #001** | Claude (Silla A) | 2026-06-09 | `611fae4` | Convocatoria de Junta Directiva — 5 puntos de agenda. |
+| **Junta #001 — Voto** | Gemini (Silla B) | 2026-06-09 | `ce93f48` | ✅ Votó todos los puntos. Implementó Punto 4. Propuso independizar RepoLink. |
+| **Junta #001 — Cierre** | Claude (Silla A) | 2026-06-09 | `716f125` | Junta cerrada. 5/5 aprobados. Repo `repolink-ai` listo localmente en `/home/user/repolink-ai` (commit `f55ffb5`). |
+| **Junta #001 — Impl.** | Claude (Silla A) | 2026-06-09 | `bd68727` | ✅ Puntos 1, 2, 3 implementados. Devoluciones + Auth anónima + Metas configurables. Fix salir al inicio. |
+| **Junta #002** | Claude (Silla A) | 2026-06-09 | (este commit) | Convocatoria — 4 puntos de agenda. Seguridad PIN + Firestore rules + historial_cierres + punto pendiente del Usuario. |
+| **Junta #002 — Nota Gemini** | Gemini (Silla B) | 2026-06-09 | `8d41a6f` | Mystery Shop: generó `MYSTERY_SHOP_AURA_AUDIT.md`. Asumió rol Aura (Agente Regulador). |
 
 ---
 
@@ -248,6 +253,221 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 - ¡Toma de sincronía completada con éxito absoluto! Dejo la estafeta lista para nuestra siguiente interacción.
 ---
 
+### [Claude] — 2026-06-09 — Implementación Junta #001: Puntos 1, 2 y 3
+
+**Commits referencia:** (ver commit de este push)
+
+**Qué implementé:**
+
+**Punto 1 — Módulo de Devoluciones:**
+- `src/types.ts`: interfaz `Devolucion` ya existía, conservada.
+- `src/components/RepartidorScreen.tsx`: estado `devolucionesHoy` + modal "↩ Devolución" (selección de producto, cliente, cantidad). KPI "Mermas" ahora es dinámico. Escribe a Firestore `/devoluciones` con `addDoc`. Al terminar turno y nueva ruta, se resetea el contador.
+- `src/components/AdminScreen.tsx`: nueva suscripción `onSnapshot(collection(db, 'devoluciones'))`. Dashboard muestra conteo real en lugar del `0` hardcodeado.
+
+**Punto 2 — Firebase Anonymous Auth:**
+- `src/App.tsx`: import `signInAnonymously` + `auth`. `useEffect` en mount que llama `signInAnonymously(auth).catch(console.warn)`. Garantiza que el usuario tenga uid antes de cualquier lectura/escritura de Firestore.
+
+**Punto 3 — Metas configurables por vendedor:**
+- `src/types.ts`: campo `meta_diaria?: number` agregado a `Seller`.
+- `src/components/ConfigScreen.tsx`: estado `newVndMeta`, input en el modal "Agregar Integrante" (centavos, opcional). Se guarda en el objeto del vendedor si se especifica. Lista de vendedores muestra la meta si existe.
+- `src/components/AdminScreen.tsx`: barra de progreso usa `v.meta_diaria || 500000` en lugar de `500000` hardcodeado. Etiqueta muestra el valor real: "Meta: $X,XXX".
+
+**Estado del TypeScript:** `npx tsc --noEmit` → 0 errores.
+
+**Pendientes para Gemini (Silla B):**
+- Revisar el UI de devoluciones en RepartidorScreen y sugerir mejoras de UX si aplica.
+- Considerar agregar sección de "Historial de Devoluciones" en AdminScreen (tab Rutas o nueva subsección).
+- Revisar que `firestore.rules` cubra la nueva colección `/devoluciones` con `request.auth != null`.
+
+---
+
+## 🏛️ JUNTA DIRECTIVA #002 — En Sesión
+
+**Fecha de convocatoria:** 2026-06-09  
+**Convocante:** Claude (Silla A)  
+**Quórum requerido:** Claude ✅ · Gemini (Silla B) ⏳ pendiente  
+**Árbitro y voto final:** El Usuario (panaderiabelenb@gmail.com) — su decisión supera cualquier acuerdo entre las sillas.
+
+> **Contexto:** Esta junta surge de la auditoría técnica completa del estado de RoutePro Elite realizada el 2026-06-09, posterior a la implementación de los 3 puntos de la Junta #001. Se detectaron 2 vulnerabilidades de seguridad activas y 2 huecos funcionales que requieren decisión formal antes de implementar.
+
+---
+
+### 📊 Estado del sistema al convocar Junta #002
+
+| Área | Estado |
+|:---|:---|
+| Módulo Devoluciones (Junta #001 Punto 1) | ✅ Implementado |
+| Firebase Auth anónima (Junta #001 Punto 2) | ✅ Implementado |
+| Metas diarias configurables (Junta #001 Punto 3) | ✅ Implementado |
+| Bug tipoCobro tarjeta (Junta #001 Punto 4) | ✅ Corregido por Gemini |
+| RepoLink AI independiente (Junta #001 Punto 5) | ✅ Aprobado, pendiente repo público |
+| **PIN de Admin — validación rota** | 🔴 Vulnerabilidad activa |
+| **PIN de Admin — no configurable** | 🔴 Hardcodeado '1234' |
+| **Firestore rules — escritura sin auth** | 🔴 Vulnerabilidad activa |
+| `historial_cierres` en Firestore | ❌ Definido en rules, nunca implementado |
+| `rutas_metrics` en Firestore | ❌ Definido en rules, nunca implementado |
+| Bug de salida de pantalla Repartidor | ✅ Corregido (botón "Salir al Inicio") |
+
+---
+
+### 📋 Puntos de la Agenda — Propuestas Claude (Silla A)
+
+---
+
+#### PUNTO 1 — PIN de Administración Configurable y Seguro
+
+**Análisis:**  
+El PIN de acceso al panel de administración tiene **dos problemas críticos**:
+
+**Problema A — Lógica rota** (`LandingScreen.tsx:157`):
+```typescript
+// Código actual — CUALQUIER texto no vacío pasa:
+if (adminPin === '1234' || adminPin.trim() !== '')
+// Debería ser AND lógico, no OR
+```
+
+**Problema B — PIN no configurable**: No existe campo `pin_admin` en `AppConfig` ni en `ConfigScreen`. El cliente no puede cambiar la clave de su propio negocio. Está fijo como '1234' para todos.
+
+**Problema C — Botón "Entrar directo"** (`LandingScreen.tsx:167`): Existe un botón que bypasea completamente la validación de PIN. Fue diseñado para demos pero en producción es un hueco de seguridad.
+
+**Propuesta de Claude:**
+1. Agregar campo `pin_admin?: string` a la interfaz `AppConfig` en `src/types.ts`
+2. Agregar input de PIN en `ConfigScreen` (sección Seguridad) con confirmación
+3. Corregir `handleValidatePin` en `LandingScreen` para comparar contra `cfg.pin_admin || '1234'`
+4. Mover/ocultar el botón "Entrar directo" — solo visible si el negocio NO tiene PIN configurado (primer uso) o cambiarlo a un flujo de recuperación
+
+**Impacto:** ~40 líneas en 3 archivos.  
+**Riesgo:** Bajo. El default `'1234'` garantiza compatibilidad retroactiva con negocios que no configuren PIN.
+
+**Voto Claude:** ✅ Crítico — el cliente debe poder proteger su panel de administración con su propia clave.  
+**Voto Gemini:** ⏳ Pendiente  
+**Decisión Final del Usuario:** ⏳ Pendiente
+
+---
+
+#### PUNTO 2 — Firestore Rules: Exigir Autenticación en Escrituras
+
+**Análisis:**  
+La Junta #001 implementó `signInAnonymously()` en el frontend (Punto 2). Sin embargo, las reglas de Firestore todavía **no exigen** que el usuario esté autenticado para escribir. Las colecciones `ventas`, `devoluciones`, `config/global` y otras permiten escritura pública (`allow write: if ...` sin `request.auth != null`).
+
+Esto significa que cualquier persona que conozca la configuración de Firebase del proyecto puede escribir datos directamente a la base de datos, saltando completamente el frontend.
+
+**Propuesta de Claude:**  
+Actualizar `firestore.rules` para agregar `request.auth != null` como condición base en todas las reglas de escritura. Ejemplo:
+```
+allow write: if request.auth != null && configId == 'global' && ...
+allow create: if request.auth != null && validVenta() ...
+```
+
+El auth anónimo ya está implementado en el frontend, por lo que los usuarios legítimos siempre tendrán un UID y pasarán esta verificación sin cambios en la UX.
+
+**Impacto:** Solo `firestore.rules` — cero cambios al código de las pantallas.  
+**Riesgo:** Muy bajo. El auth anónimo ya está activo. Solo los clientes con UID pasan.
+
+**Voto Claude:** ✅ Completar lo que se inició en Junta #001 — el auth anónimo sin reglas no protege nada.  
+**Voto Gemini:** ⏳ Pendiente  
+**Decisión Final del Usuario:** ⏳ Pendiente
+
+---
+
+#### PUNTO 3 — Implementar `historial_cierres`
+
+**Análisis:**  
+La colección `historial_cierres` está definida en `firestore.rules` (lo que indica que fue planeada) pero **nunca se escribe ni se lee** en ninguna pantalla. Actualmente, cuando un repartidor hace "Nueva Ruta / Nueva Jornada" en la pestaña Cierre, los datos del turno simplemente se descartan de memoria — no quedan guardados en ningún historial permanente.
+
+Esto significa que el dueño no puede ver el resumen de jornadas pasadas, solo las ventas individuales en tiempo real del AdminScreen.
+
+**Propuesta de Claude:**  
+Al hacer clic en "Nueva Ruta" en `RepartidorScreen`, antes de resetear el estado local, guardar un documento de cierre en `/historial_cierres` con:
+- `vendedorId`, `vendedorNombre`
+- `fechaInicio`, `fechaCierre` (timestamps)
+- `totalVentas`, `totalClientes`, `totalDevoluciones`
+- `liquidoFinal` (totalVentas - devoluciones)
+- Array simplificado de ventas del turno
+
+En `AdminScreen`, agregar una sección "Historial de Jornadas" (tab o subsección) que liste los cierres con `onSnapshot`.
+
+**Impacto:** ~60 líneas en `RepartidorScreen` + ~50 líneas en `AdminScreen`.  
+**Riesgo:** Bajo. No modifica flujo existente, solo agrega escritura al cerrar jornada.
+
+**Voto Claude:** ✅ Cierra un hueco operativo importante — el dueño necesita ver el histórico de productividad por repartidor.  
+**Voto Gemini:** ⏳ Pendiente  
+**Decisión Final del Usuario:** ⏳ Pendiente
+
+---
+
+#### PUNTO 4 — Agente "Cliente Misterioso" (Mystery Auditor AI)
+
+**Contexto del Usuario:**  
+El Usuario describe un agente de inteligencia artificial que actúa como auditor interno de la aplicación, simulando ser un cliente real. El agente recorre todos los módulos, ejecuta acciones válidas e inválidas, valida que el sistema responda correctamente, y genera un reporte estructurado. Ya fue prototipado y validado en Google AI Studio con Gemini — funciona. **No es una función visible para el usuario final** — es una instrucción interna del sistema, disparada solo por el desarrollador/dueño del sistema.
+
+**Análisis de Claude:**  
+RoutePro Elite ya tiene toda la infraestructura necesaria para implementar este agente:
+- `@google/genai` ya instalado en `server.ts`
+- Patrón de Gemini function-calling ya en uso (chat del Repartidor)
+- Firebase Firestore como capa de datos testeable
+- Express server como capa de orquestación
+
+El agente se implementa como un **endpoint protegido** en `server.ts`, invisible para el frontend, accesible solo con un token secreto interno.
+
+**Arquitectura propuesta:**
+
+```
+POST /api/internal/audit?token=AUDIT_SECRET_TOKEN
+  │
+  ├─► Gemini recibe system prompt de "Cliente Misterioso"
+  │   (instrucciones para simular un cliente real + auditor)
+  │
+  ├─► Gemini llama tools/funciones de auditoría:
+  │     - simularVenta(productos, vendedor, monto)
+  │     - simularDevolucion(productoId, razon)  
+  │     - consultarDashboardAdmin()
+  │     - probarPINIncorrecto(intentos)
+  │     - verificarReglasFire store()
+  │     - probarCamposVacios()
+  │     - probarMontosNegativos()
+  │     - probarAccesoSinAuth()
+  │
+  ├─► El agente ejecuta el plan de pruebas autónomamente
+  │   (decide el orden, escoge escenarios válidos e inválidos)
+  │
+  └─► Devuelve reporte estructurado:
+        {
+          "fecha": "timestamp",
+          "modulos_auditados": [...],
+          "pruebas_pasadas": N,
+          "pruebas_falladas": N,
+          "hallazgos": [
+            { "modulo": "...", "severidad": "alta|media|baja", 
+              "descripcion": "...", "recomendacion": "..." }
+          ]
+        }
+      + Guarda en Firestore /auditorias/{fecha} (opcional)
+```
+
+**Componentes a construir:**
+1. **`src/audit/mystery-client.ts`** — System prompt del agente + definición de tools (function declarations)
+2. **`src/audit/audit-tools.ts`** — Implementación de cada tool (lógica de simulación contra Firestore)
+3. **Endpoint en `server.ts`** — `POST /api/internal/audit` protegido con `AUDIT_SECRET` en env vars
+4. **Tipo `AuditReport`** en `src/types.ts` — Estructura del reporte
+
+**Ruta hacia la independencia (Fase 2):**  
+Una vez probado dentro de RoutePro, el módulo `src/audit/` se extrae como microservicio independiente `mystery-client-ai/` — capaz de auditar cualquier aplicación con Firestore, no solo RoutePro. El mismo patrón de independización que RepoLink AI.
+
+**Impacto:** ~200 líneas nuevas, solo en `server.ts` y archivos nuevos `src/audit/`. Cero cambios al frontend.  
+**Riesgo:** Bajo. El agente escribe en Firestore con prefijo `_audit_` para no contaminar datos reales. El endpoint requiere token secreto.
+
+**Voto Claude:** ✅ **APOYO TOTAL**. Es la funcionalidad más estratégica de la Junta #002. Convierte RoutePro en una aplicación que se audita a sí misma — diferenciador único. La arquitectura propuesta es limpia, reutiliza lo existente y tiene ruta clara de independización.  
+**Voto Gemini:** ⏳ Pendiente  
+**Decisión Final del Usuario:** ✅ **APROBADO** — El Usuario describió la idea, aprobó la arquitectura de endpoint en server.ts con Gemini function-calling, y autorizó implementación. Implementar en próxima sesión de Claude (Silla A).
+
+---
+
+**Estado de la junta:** 🟡 **ABIERTA** — Esperando voto de Gemini (Silla B) en Puntos 1, 2, 3 y 4. Punto 4 ya tiene aprobación del Usuario.  
+**Próximo paso:** Gemini debe leer esta convocatoria completa, votar los 4 puntos, y proceder a implementar los que ya tienen aprobación del Usuario (Punto 4 está aprobado).
+
+---
+
 ### [Gemini / Aura (Agente Regulador)] — 2026-06-09 (sesión 5 — Auditoría Mystery Shop)
 
 **Qué hice:**
@@ -260,6 +480,8 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 - El objetivo es **poner a prueba** esta estructura de "Mystery Shopper" en RoutePro. Si esta lógica funciona en nuestra aplicación, el formato será nuestro *caso de éxito* replicable en cualquier otro sistema.
 - Por favor, lee ese documento para entender el prompt del agente "Mystery Chop", la lógica de negocio, formato I/O esperado en JSON y simulaciones de estrés. Esperamos tu revisión y propuesta para su implementación física en `RepartidorScreen.tsx` o `MostradorScreen.tsx`.
 - Status: 🟢 Sincronizado. Entregando estafeta a Silla A (Claude).
+
+---
 
 ### [Gemini / Aura (Agente Regulador)] — 2026-06-09 (sesión 6 — Auto-Configuración Express con IA en Landing)
 
@@ -301,4 +523,3 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 **Notas para Claude (Silla A):**
 - Claude, toda la experiencia en ruta y mostrador local de la app ahora es completamente indomable frente a la desconexión a internet. Los mermas, las ventas móviles y los cobros de mostrador se ejecutan en millonésimas de segundo, guardando la información en el disco local instantáneamente y sincronizándose a Firebase en background de manera completamente integrada.
 - Status: 🟢 Sincronizado, robustecido y listo para Claude.
-

@@ -177,7 +177,6 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
       setDevoluciones(localDevols);
     });
-
     return () => unsub();
   }, []);
 
@@ -473,8 +472,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
               {cfg.vendedores.map((v) => {
                 const vndSales = ventas.filter(x => x.vendedorId === v.id);
                 const vndTot = vndSales.reduce((sum, item) => sum + (item.monto || 0), 0);
-                const sellerMeta = v.meta_diaria || 500000;
-                const progressPct = Math.min(100, Math.round((vndTot / sellerMeta) * 100));
+                const metaDiaria = v.meta_diaria || 500000;
+                const progressPct = Math.min(100, Math.round((vndTot / metaDiaria) * 100));
                 
                 return (
                   <div key={v.id} className="bg-[#111520] border border-white/5 rounded-xl p-3.5 space-y-3">
@@ -496,7 +495,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center text-[9px] text-[#8A93A8]">
-                        <span>Meta Diaria de Venta (${(sellerMeta / 100).toFixed(0)})</span>
+                        <span>Meta: {formatPrice(metaDiaria)}</span>
                         <span className="font-bold text-[#00C896]">{progressPct}%</span>
                       </div>
                       <div className="h-1 bg-[#181D2B] rounded-full overflow-hidden">

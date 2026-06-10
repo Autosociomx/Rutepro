@@ -1083,10 +1083,10 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[9px] font-mono text-[#3E4A60] uppercase font-bold tracking-wider">Zona territorial / Ruta</label>
-                  <input 
-                    type="text" 
-                    value={newVndRuta} 
-                    onChange={(e) => setNewVndRuta(e.target.value)} 
+                  <input
+                    type="text"
+                    value={newVndRuta}
+                    onChange={(e) => setNewVndRuta(e.target.value)}
                     className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
                     placeholder="Ej: Zona Norte / Centro"
                   />

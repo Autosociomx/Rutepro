@@ -5,17 +5,17 @@
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { 
+import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  collection, 
-  query, 
-  where, 
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  collection,
+  query,
+  where,
   onSnapshot,
   writeBatch,
   increment,
@@ -24,13 +24,12 @@ import {
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-
-// Initialize Firestore with robust persistent offline cache
+/* CRITICAL: firestoreDatabaseId is required — the app will break without it.
+   persistentLocalCache: las escrituras sin internet se encolan en IndexedDB
+   y se sincronizan solas al volver la señal (modo offline de ruta). */
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-}, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+}, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
 
 export enum OperationType {
