@@ -682,13 +682,13 @@ OUTPUT ONLY the optimized final prompt text in plain English. Do not add intro, 
   // API Route for server-side business intelligence chat (chatbot in Panel del Dueño)
   app.post('/api/chat', async (req, res) => {
     try {
-      const { question, config_negocio, ventas, vendedores, chatHistory } = req.body;
+      const { question, config_negocio, ventas, vendedores, chatHistory, abonos, clientesLedger } = req.body;
 
       let ai;
       try {
         ai = getGemini();
       } catch (err) {
-        // Fallback offline answers if no Gemini API Key is configured yet, incorporating time, calendar, CDS and Mystery Shop skills
+        // Fallback offline answers if no Gemini API Key is configured yet, incorporating time, calendar, CDS, Mystery Shop, and client ledger skills
         const qLower = (question || '').toLowerCase();
         let ans = 'Asistente Corporativo (Modo Local): ';
         
@@ -702,17 +702,19 @@ OUTPUT ONLY the optimized final prompt text in plain English. Do not add intro, 
           ans += `La fecha operativa en el calendario es ${dateStr}. Útil para calendarizar despachos y optimizar descansos de choferes.`;
         } else if (qLower.includes('misterioso') || qLower.includes('mystery') || qLower.includes('auditor') || qLower.includes('shop')) {
           ans += `El Módulo de Cliente Misterioso está activo para validar que los choferes cobren precios oficiales del catálogo, entreguen recibos/tickets impresos, cuiden la limpieza del uniforme y den un trato cortés de bienvenida en calle.`;
+        } else if (qLower.includes('deuda') || qLower.includes('debe') || qLower.includes('saldo') || qLower.includes('pendiente') || qLower.includes('abono') || qLower.includes('pago')) {
+          const unpaidClients = (clientesLedger || []).filter((c: any) => c.saldo_actual > 0);
+          const totalPend = unpaidClients.reduce((sum: number, c: any) => sum + c.saldo_actual, 0);
+          ans += `Cuentas de Clientes por Cobrar: Tenemos ${unpaidClients.length} cuentas pendientes con un saldo acumulado total de $${(totalPend / 100).toFixed(2)}. `;
+          if (unpaidClients.length > 0) {
+            ans += `Los mayores deudores registrados son: ` + unpaidClients.slice(0, 3).map((u: any) => `${u.nombre} ($${(u.saldo_actual / 100).toFixed(2)})`).join(', ') + `.`;
+          }
+        } else if (qLower.includes('his') || qLower.includes('compr') || qLower.includes('ventas') || qLower.includes('recib')) {
+          ans += `Soporte de Auditoría de Cuentas: He analizado el historial. Hoy registramos ${ventas?.length || 0} visitas validadas en ruta. Al pulsar en la tarjeta 'CLIENTES' o 'SALDO PENDIENTE' del panel de control de RoutePro, puedes exportar o ver el recibo detallado con fecha, hora, chofer y desglose de kilos/piezas para dárselo de respaldo aclaratorio al cliente.`;
         } else if (qLower.includes('cds') || qLower.includes('centro') || qLower.includes('cedis') || qLower.includes('distribucion') || qLower.includes('distribución')) {
           ans += `El CDS (Centro de Distribución) es el núcleo logístico de RoutePro. Coordina la asignación sugerida por IA de mermas y devoluciones, reduciendo viajes redundantes y abaratando costos de combustible.`;
-        } else if (qLower.includes('sesio') || qLower.includes('turno') || qLower.includes('flujo') || qLower.includes('etapa')) {
-          ans += `Estructura de la Sesión del Repartidor: 1) Check-In en el CDS con carga sugerida por IA. 2) Ventas sincronizadas en vivo con emisión de recibo en calle. 3) Retorno al CDS para conciliación de caja de sucursal contra inventario entregado y Check-Out de liquidación financiera segura.`;
-        } else if (qLower.includes('ruta') || qLower.includes('vendedor')) {
-          ans += `Contamos con ${vendedores?.length || 0} rutas de reparto registradas. Total de transacciones hoy: ${ventas?.length || 0} ventas validadas y sincronizadas al instante.`;
-        } else if (qLower.includes('efectivo') || qLower.includes('dinero') || qLower.includes('caja')) {
-          const tot = (ventas || []).reduce((sum: number, v: any) => sum + (v.monto || 0), 0);
-          ans += `La caja acumulada reportada en calle hoy asciende a $${(tot / 100).toFixed(2)}. Listo para reconciliar en terminal de almacén central del CEDIS.`;
         } else {
-          ans += `Se registraron ${ventas?.length || 0} ventas totales hoy. Pregúntame sobre la hora del CDS, calendario logístico, estructura de las sesiones de usuario o las auditorías de Cliente Misterioso.`;
+          ans += `Tengo cargados los balances de tus clientes. Pregúntame sobre cuentas deudoras, saldos de crédito actuales, mermas de ruta, el reloj de la sucursal o los estándares operativos.`;
         }
         return res.json({ text: ans });
       }
@@ -731,6 +733,22 @@ OUTPUT ONLY the optimized final prompt text in plain English. Do not add intro, 
         items: v.productos || v.items
       }));
 
+      const abonosOverview = (abonos || []).map((ab: any) => ({
+        cliente: ab.clienteNombre,
+        monto: ab.monto ? (ab.monto / 100).toFixed(2) : '0.00',
+        fecha: ab.fecha,
+        recibidoPor: ab.recibidoPor || 'Caja'
+      }));
+
+      const ledgerOverview = (clientesLedger || []).map((c: any) => ({
+        nombre: c.nombre,
+        comprasTotales: (c.total_compras / 100).toFixed(2),
+        totalPagadoEnAbonos: (c.total_abonos / 100).toFixed(2),
+        saldoDeudaActualXCobrar: (c.saldo_actual / 100).toFixed(2),
+        frecuenciaVisitas: c.visitas_totales,
+        detallesUbicacion: c.direccion || 'Ruta de entrega ordinaria'
+      }));
+
       const localTimeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const localDateStr = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -740,42 +758,39 @@ El dueño del negocio se está comunicando en tiempo real contigo para auditar f
 === Habilidades de Tiempo y Calendario (Time & Calendar Skills) ===
 - Se te ha enseñado a manejar el tiempo oficial de la sucursal y usar agendas de turnos.
 - La HORA LOCAL actual en el Centro de Distribución es: ${localTimeStr}
-- La FECHA actual en el calendario operativo es: ${localDateStr} (Úsala para aconsejar sobre calendarios de rutas, planificar despachos u organizar descansos semanales de conductores).
+- La FECHA actual en el calendario operativo es: ${localDateStr}.
 
-=== Conocimiento del CDS (Centro de Distribución) y Rutas ===
+=== Cuentas de Clientes por Cobrar, Saldos de Crédito e Historial (Accounts Receivable & Ledger) ===
+- El usuario te pregunta frecuentemente por deudas de clientes específicos ("¿Cuánto me debe Doña Carmen?" o "Saldos pendientes").
+- Posees acceso total a los saldos por cobrar, compras históricas e historial de abonos del negocio:
+  * Balances de Clientes Activos (Ledger): ${JSON.stringify(ledgerOverview)}
+  * Pagos / Abonos Recientes Sincronizados: ${JSON.stringify(abonosOverview)}
+- Tienes como meta clave proveer respuestas exactas y numéricas en pesos mexicanos para evitar malentendidos entre choferes y clientes.
+- Explica de forma asertiva que el panel cuenta con recibos de respaldo ("Ticket de Verificación") con firmas y desgloses de piezas/kilos para resolver disputas contables con clientes que no estén de acuerdo con sus distributors.
+
+=== Dirección del CDS (Centro de Distribución) y Rutas ===
 - Sabes perfectamente qué es un CDS/CEDIS (Centro de Distribución) y eres especialista en la optimización de rutas de última milla.
 - Entiendes el flujo logístico de asignación de carga inicial, rebalanceo para evitar desabastos, manejo de mermas y devolución de inventario no vendido al almacén central.
-- Aconsejas al usuario sobre la planeación geográfica de drops por colonia, la optimización de traslados vehiculares y cómo reducir tiempos de ruta o consumos redundantes de combustible.
 
 === Estructuración de Sesiones de Usuario (User Shifts / Session Engineering) ===
-- Posees metodologías claras para estructurar las jornadas de los repartidores. Una sesión típica se divide en tres fases críticas:
-  1. Check-In de Carga Central: El repartidor reporta al CDS por la mañana, carga la mercancía sugerida según demanda predictiva y valida su inventario de salida.
-  2. Transacciones Validadas en Calle: Realiza visitas geolocalizadas, imprime recibos/tickets y sincroniza cada cobro (efectivo/crédito) para evitar ventas no registradas.
-  3. Check-Out de Liquidación (Cierre Financiero): Retorna al CEDIS, registra unidades merma o devueltas, confronta el dinero cobrado contra el inventario faltante y liquida su saldo.
+- Una sesión típica de repartidor se divide en: 1) Check-In de Carga, 2) Ventas en Calle con emisión de tickets de respaldo, 3) Check-Out de liquidación financiera y conciliación en el CEDIS.
 
 === Módulo Activo de Cliente Misterioso (Mystery Shop) ===
-- El sistema tiene activas auditorías de "Cliente Misterioso" (auditorías encubiertas) para blindar el negocio ante fraudes o fallas operativas de choferes.
-- Sabes que un Mystery Shopper audita de forma anónima en calle 4 pilares:
-  1. Cobro Exacto: Que el chofer respete las tarifas oficiales del catálogo (evita el "robo hormiga" o sobreprecio).
-  2. Entrega de Recibo: Que registre la transacción en vivo en su panel en lugar de quedarse con el efectivo offline.
-  3. Presentación y Limpieza: Orden de la mercancía, higiene y uniforme reglamentario limpio.
-  4. Trato Cortés: Que el trato al cliente sea de amabilidad, agilidad y cortesía.
+- El sistema tiene activas auditorías de "Cliente Misterioso" (auditorías encubiertas) para blindar el negocio ante fraudes, evaluando Cobro oficial del catálogo, Entrega de ticket, Orden y Trato cortés en ruta.
 
-=== Datos en Vivo del Negocio ===
-A) Catálogo Corporativo de Productos autorizados: ${productsStr}
-B) Vendedores/Repartidores vigentes: ${activeSellersStr}
-C) Transacciones de hoy recibidas en vivo en el Cdis: ${JSON.stringify(salesOverview)}
+=== Transacciones de hoy recibidas en el Cdis ===
+- Detalle de ventas en vivo de hoy: ${JSON.stringify(salesOverview)}
 
 Historial de chat reciente:
 ${JSON.stringify(chatHistory || [])}
 
-Pregunta o instrucción: "${question}"
+Pregunta o instrucción del dueño: "${question}"
 
 Instrucciones de Respuesta:
-1. Responde de manera profesional, breve, concisa y altamente resolutiva (máximo 3-4 líneas).
+1. Responde de manera altamente resolutiva, precisa, profesional y empática (máximo 4 renglones).
 2. Usa modismos educados, profesionales y amigables de español de México.
-3. Si el usuario te pregunta por la hora o fecha actual de la sucursal, respóndela con cortesía utilizando los datos provistos.
-4. Apóyalos con ideas brillantes sobre planeación y cómo medir el cumplimiento de los empleados mediante auditorías misteriosas.`;
+3. Cita números reales, montos y nombres exactos si el usuario te pregunta por saldos o estados de clientes. ¡Nunca inventes montos de deudas! Si un cliente no está en la lista de ledger, dilo de forma clara y sugiere registrar su primera venta a crédito en sucursal o reparto.
+4. Apóyalos con ideas brillantes sobre conciliación diaria, balanceo de saldos de crédito y cómo el Módulo de Verificación de Historial en RoutePro Elite evita fugas de dinero y disputas de cobro.`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.5-flash',

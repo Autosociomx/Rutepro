@@ -25,9 +25,17 @@ export interface Seller {
 export interface Client {
   id: string;
   nombre: string;
+  tipo?: string;
+  vendedorId?: string;
+  vendedorNombre?: string;
+  latitude?: number;
+  longitude?: number;
   direccion?: string;
   frecuencia?: string;
   telefono?: string;
+  ultima_compra?: number;
+  total_comprado?: number;
+  timestamp?: number;
 }
 
 export interface VentaItem {
@@ -132,6 +140,15 @@ export interface MysteryAudit {
   calificacion: number; // percentage (e.g. 100)
   notas?: string;
   timestamp: number;
+}
+
+export interface Abono {
+  id: string;
+  clienteNombre: string;
+  monto: number; // payment in cents
+  fecha: string;
+  timestamp: number;
+  recibidoPor?: string; // name of dispatcher or cashier
 }
 
 

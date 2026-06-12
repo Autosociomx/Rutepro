@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
-import { Product, Seller, AppConfig, Devolucion } from '../types';
+import { collection, doc, setDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { Product, Seller, AppConfig, Devolucion, Client } from '../types';
 import { validateSale } from '../utils/syncEngine';
 
 interface ClientSaleRecord {
@@ -42,6 +42,11 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
   const [showCliModal, setShowCliModal] = useState(false);
   const [newCliName, setNewCliName] = useState('');
   const [newCliType, setNewCliType] = useState('Abarrotes');
+  const [newCliAddress, setNewCliAddress] = useState('');
+  const [newCliPhone, setNewCliPhone] = useState('');
+  const [selectedPresetClientId, setSelectedPresetClientId] = useState<string>('new');
+  const [misClientes, setMisClientes] = useState<Client[]>([]);
+  const [loadingClientes, setLoadingClientes] = useState(false);
 
   // Route AI Chat state
   const [chatInp, setChatInp] = useState('');
@@ -58,6 +63,29 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setCartRep([]);
     setTipoRep('efectivo');
     setActiveTab('ped');
+    setSelectedPresetClientId('new');
+    setNewCliName('');
+    setNewCliType('Abarrotes');
+    setNewCliAddress('');
+    setNewCliPhone('');
+
+    // Fetch clients for this seller
+    setLoadingClientes(true);
+    const qClients = query(collection(db, 'clientes'), where('vendedorId', '==', vnd.id));
+    getDocs(qClients)
+      .then((snap) => {
+        const loaded: Client[] = [];
+        snap.forEach((docSnap) => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as Client);
+        });
+        setMisClientes(loaded);
+      })
+      .catch((err) => {
+        console.warn('Error loading clients from Firestore:', err);
+      })
+      .finally(() => {
+        setLoadingClientes(false);
+      });
 
     // 1. Reconstruct today's shift clients/sales from local rp_ventas to prevent data loss in offline mode
     const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
@@ -170,6 +198,24 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setCartRep(updated);
   };
 
+  const handlePresetClientChange = (clientId: string) => {
+    setSelectedPresetClientId(clientId);
+    if (clientId === 'new') {
+      setNewCliName('');
+      setNewCliType('Abarrotes');
+      setNewCliAddress('');
+      setNewCliPhone('');
+    } else {
+      const match = misClientes.find(c => c.id === clientId);
+      if (match) {
+        setNewCliName(match.nombre);
+        setNewCliType(match.tipo || 'Abarrotes');
+        setNewCliAddress(match.direccion || '');
+        setNewCliPhone(match.telefono || '');
+      }
+    }
+  };
+
   const handleRegCli = async () => {
     if (!newCliName.trim()) {
       triggerToast('Escribe el nombre del cliente', 'err');
@@ -184,11 +230,67 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     const saleId = 'S' + Date.now();
     const nowStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
+    let finalClientId = 'C_NEW_' + Date.now();
+    let finalClientLat = 19.4326;
+    let finalClientLng = -99.1332;
+
+    if (selectedPresetClientId !== 'new') {
+      const existingClient = misClientes.find(c => c.id === selectedPresetClientId);
+      if (existingClient) {
+        finalClientId = existingClient.id;
+        finalClientLat = existingClient.latitude || 19.4326;
+        finalClientLng = existingClient.longitude || -99.1332;
+      }
+    } else {
+      // Create new client in their master route collection
+      const seed = Date.now();
+      const baseLat = 19.4326 + (seed % 100) * 0.0001;
+      const baseLng = -99.1332 - (seed % 100) * 0.0001;
+      finalClientLat = baseLat;
+      finalClientLng = baseLng;
+
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000, maximumAge: 60000 });
+          });
+          finalClientLat = pos.coords.latitude;
+          finalClientLng = pos.coords.longitude;
+        } catch (geoErr) {
+          console.warn('Geolocation mapping fallback engaged:', geoErr);
+        }
+      }
+
+      const newClientDoc: Client = {
+        id: finalClientId,
+        nombre: newCliName.trim(),
+        tipo: newCliType,
+        vendedorId: selectedSeller!.id,
+        vendedorNombre: selectedSeller!.nombre,
+        latitude: finalClientLat,
+        longitude: finalClientLng,
+        direccion: newCliAddress.trim() || 'Dirección de Ruta',
+        telefono: newCliPhone.trim() || 'Sin teléfono',
+        timestamp: Date.now()
+      };
+
+      setMisClientes(prev => [newClientDoc, ...prev]);
+
+      setDoc(doc(db, 'clientes', finalClientId), newClientDoc)
+        .then(() => {
+          console.log(`✓ Master Client ${finalClientId} registered on cloud route database.`);
+        })
+        .catch(err => {
+          console.warn('Client registration background sync stalled:', err);
+        });
+    }
+
     const newCliRecord = {
       id: saleId,
       nombre: newCliName.trim(),
       tipoNegocio: newCliType,
       productos: [...cartRep],
+      type: newCliType,
       tipoCobro: tipoRep,
       total: tot,
       hora: nowStr,
@@ -199,7 +301,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       id: saleId,
       vendedorId: selectedSeller!.id,
       vendedorNombre: selectedSeller!.nombre,
-      clienteId: 'C_ROUTE_' + Date.now(),
+      clienteId: finalClientId,
       clienteNombre: newCliName.trim(),
       clienteTipo: newCliType,
       monto: tot,
@@ -212,20 +314,17 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         ic: item.icono
       })),
       timestamp: Date.now(),
-      validado: true, // Marked validated by telemetry
-      sincronizado: false // marked unsynced initially
+      validado: true,
+      sincronizado: false
     };
 
-    // Real-time local verification/validation of distributor sale
     const validationResult = validateSale(ventaDocData);
     if (!validationResult.isValid) {
       triggerToast(`Fallo de Validación: ${validationResult.reason}`, 'err');
       return;
     }
     
-    // 1. Guardar de forma local e inmediata para evitar cualquier bloqueo en venta de ruta OFFLINE
     try {
-      // Save locally to local sales lists in localStorage
       const prevLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
       prevLocal.push({
         ...ventaDocData,
@@ -235,11 +334,13 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       });
       localStorage.setItem('rp_ventas', JSON.stringify(prevLocal));
 
-      // Append to active UI shift statistics
       setCliHoy([...cliHoy, newCliRecord]);
       setCartRep([]);
       setNewCliName('');
       setNewCliType('Abarrotes');
+      setNewCliAddress('');
+      setNewCliPhone('');
+      setSelectedPresetClientId('new');
       setTipoRep('efectivo');
       setShowCliModal(false);
       triggerToast(`✓ Cliente registrado · ${formatPrice(tot)}`);
@@ -248,7 +349,6 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       triggerToast('Error con almacenamiento de ruta local', 'err');
     }
 
-    // 2. Sincronización en segundo plano con la nube sin retrasar la transacción real en puerta
     const cleanDbData = {
       id: ventaDocData.id,
       vendedorId: ventaDocData.vendedorId,
@@ -265,8 +365,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     setDoc(doc(db, 'ventas', saleId), cleanDbData)
       .then(() => {
-        console.log(`✓ Venta de ruta ${saleId} sincronizada con la nube.`);
-        // Mark as synchronized in local storage
+        console.log(`✓ Venta de ruta ${saleId} sincronizada with cloud.`);
         try {
           const currentLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
           const idx = currentLocal.findIndex((x: any) => x.id === saleId);
@@ -280,7 +379,6 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       })
       .catch((err) => {
         console.warn(`Firestore backup stalled or offline for ventas/${saleId}:`, err);
-        // No bloqueamos. El cache offline robusto de Firestore sincronizará cuando consiga internet.
       });
   };
 
@@ -756,31 +854,81 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-fade-in text-left">
           <div className="bg-[#111520] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5.5 w-full sm:max-w-md max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl">
             <div className="font-display font-bold text-base text-white">Registrar Entrega de Ruta</div>
+            
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Seleccionar Cliente de tu Ruta</label>
+              <select
+                value={selectedPresetClientId}
+                onChange={(e) => handlePresetClientChange(e.target.value)}
+                className="bg-[#181D2B] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+              >
+                <option value="new">➕ REGISTRAR NUEVO CLIENTE (Guarda ubicación GPS)</option>
+                {misClientes.map(c => (
+                  <option key={c.id} value={c.id}>
+                    👤 {c.nombre} ({c.tipo || 'Abarrotes'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex flex-col gap-1">
               <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Nombre del Cliente</label>
               <input 
                 type="text" 
                 value={newCliName} 
                 onChange={(e) => setNewCliName(e.target.value)} 
-                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                disabled={selectedPresetClientId !== 'new'}
+                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
                 placeholder="Ej: Abarrotes Doña Rosa"
               />
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Tipo de Negocio / Giro</label>
-              <div className="flex flex-wrap gap-1.5">
-                {['Abarrotes', 'Miscelánea', 'Depósito', 'Materias Primas', 'Restaurante', 'Otro'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setNewCliType(t)}
-                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg cursor-pointer transition-all ${newCliType === t ? 'bg-[#E8B04A] text-black shadow-[0_0_10px_rgba(232,176,74,0.3)]' : 'bg-[#181D2B] border border-white/5 text-[#8A93A8] hover:text-white'}`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
+              {selectedPresetClientId !== 'new' ? (
+                <div className="text-xs font-bold text-amber-400 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/10 inline-block w-fit">
+                  {newCliType}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {['Abarrotes', 'Miscelánea', 'Depósito', 'Materias Primas', 'Restaurante', 'Otro'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setNewCliType(t)}
+                      className={`px-3 py-1.5 text-[10px] font-bold rounded-lg cursor-pointer transition-all ${newCliType === t ? 'bg-[#E8B04A] text-black shadow-[0_0_10px_rgba(232,176,74,0.3)]' : 'bg-[#181D2B] border border-white/5 text-[#8A93A8] hover:text-white'}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {selectedPresetClientId === 'new' && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Dirección (Opcional)</label>
+                  <input 
+                    type="text" 
+                    value={newCliAddress} 
+                    onChange={(e) => setNewCliAddress(e.target.value)} 
+                    className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    placeholder="Calle, Número y Colonia"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Teléfono (Opcional)</label>
+                  <input 
+                    type="text" 
+                    value={newCliPhone} 
+                    onChange={(e) => setNewCliPhone(e.target.value)} 
+                    className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    placeholder="Ej: 5512345678"
+                  />
+                </div>
+              </>
+            )}
 
             {/* Configured Products Grid to dynamically click & add */}
             <div className="space-y-1.5">

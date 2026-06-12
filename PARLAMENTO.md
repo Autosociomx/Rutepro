@@ -12,7 +12,8 @@
 | **Inicio** | Claude (Silla A) | 2026-06-09 | `ae1f1b1` | Auditoría inicial y reporte de problemas críticos. |
 | **Iteración 1** | Gemini (Silla B) | 2026-06-09 | `5e8b419` | ✓ Sincronizado |
 | **Iteración 2** | Claude (Silla A) | 2026-06-09 | `c50056e` | Restauración de `repolink/` eliminado por Gemini. Zona protegida documentada. |
-| **Junta #001** | Claude (Silla A) | 2026-06-09 | `(en curso)` | Convocatoria de Junta Directiva — 5 puntos de agenda. Esperando Gemini + Usuario. |
+| **Junta #001** | Claude (Silla A) | 2026-06-09 | `7f4ab2c` | 🟢 Cerrada y Ejecutada. Resoluciones aprobadas por el Usuario. |
+| **Iteración 3** | Gemini (Silla B) | 2026-06-11 | `5d0a6c2` | Separación completa de clientes/rutas por vendedor, GPS real y mapas dinámicos. |
 
 ---
 
@@ -178,6 +179,24 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 ---
 
 ## 📝 Registro de Trabajo Reciente
+
+### [Gemini (Silla B)] — 2026-06-11 (sesión 10 — Independización de Rutas y Mapas Dinámicos IP-GPS)
+
+**Qué hice:**
+- **Independización de Clientes y Rutas**: Creamos una colección maestra `/clientes` para descentralizar y separar las carteras de clientes por vendedor. Cada vendedor/repartidor construye, visualiza y opera únicamente sobre su propio catálogo (aislado vía `where('vendedorId', '==', seller.id)`). El administrador mantiene visibilidad completa (auditando y sumando la totalidad de clientes).
+- **Esquemas y Tipos Unificados**: Actualicé `firebase-blueprint.json` y `src/types.ts` para tipar estrictamente el modelo `Client` con coordenadas `latitude`, `longitude`, `vendedorId`, `vendedorNombre`, `direccion`, `telefono` y `timestamp`.
+- **Registro con GPS Real en Ruta**: Modifiqué `RepartidorScreen.tsx` para agregar un selector inteligente. Permite recargar clientes existentes en su ruta para entregas rápidas, o registrar un cliente nuevo capturando instantáneamente su ubicación GPS con la API de Geolocalización del navegador.
+- **Mapas SVG Proyectivos en Admin**: Reescribí la lógica de `getRouteBreadcrumbs` en `AdminScreen.tsx`. En lugar de devolver un array fijo alternativo de 5 paradas fijas, ahora calcula de forma matemática la proyección bi-dimensional de las coordenadas reales (`latitude` y `longitude`) mapeándolas dinámicamente al lienzo SVG (`x` e `y` fluidos con escalado dinámico relativo).
+- **Corrección de Bug de Navegación**: Corregí un fallo silencioso en `AdminScreen.tsx` donde el botón "Siguiente parada" provocaba un desbordamiento o crash debido a un bucle rígido de `% 5`. Ahora utiliza modulación dinámica `% stops.length`.
+- **Reglas de Seguridad**: Robustecí `firestore.rules` instalando validaciones explícitas de integridad para la colección de `/clientes`. Los despliegues se ejecutaron de manera exitosa.
+- **Compilación de Producción**: Confirmado con el linter y compilador que el proyecto se encuentra en un estado 100% verde y operacional.
+
+**Notas para Claude (Silla A):**
+- Claude, he completado la separación absoluta del historial de rutas. Cada vendedor registra y visualiza únicamente sus propios clientes, estructurando dinámicamente `/clientes` con coordenadas de geolocalización reales.
+- El panel del administrador (`AdminScreen`) es ahora una joya visual: cuando seleccionas un vendedor con clientes reales, el mapa dibuja las trazas y los pines en base a una proyección matemática ágil calculada directamente a partir del min/max lat/lng de las paradas guardadas. El fallback estático elegante se mantiene activo de manera segura solo si la ruta tiene 0 clientes asociados.
+- El linter y el empaquetador corren sin un solo warning. Te entrego la estafeta con un entorno altamente profesional, limpio y sincronizado. ¡A seguir rompiéndola!
+
+---
 
 ### [Gemini (Silla B)] — 2026-06-09 (sesión 4 — Junta #001)
 
