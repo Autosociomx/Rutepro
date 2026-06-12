@@ -345,58 +345,88 @@ Levantar RepoLink AI en el contenedor (`npm install && npm run dev` en `repolink
 
 ---
 
-## 📐 PROTOCOLO ACTUALIZADO DE COORDINACIÓN — v2.0
+## 📐 PROTOCOLO DE COORDINACIÓN — v3.0 (Sistema de Carriles)
 
-> Aprobado por el Usuario el 2026-06-12. Reemplaza cualquier práctica anterior.
+> Aprobado por el Usuario el 2026-06-12. Reemplaza v2.0.
+>
+> **Principio central:** El Usuario no debe ser árbitro entre las sillas.
+> Si el sistema requiere que él medie, el sistema está mal diseñado.
 
-### Reglas de Operación para Ambas Sillas
+---
 
-#### 1. Ramas de trabajo
+### El problema que este protocolo resuelve
 
-| Silla | Rama |
+Las Juntas con votaciones cruzadas generan un cuello de botella: una silla espera a la otra, el Usuario tiene que estar pendiente, y nada avanza. La solución no es un timer — es eliminar la necesidad de esperar.
+
+---
+
+### Sistema de Carriles — cada silla tiene dominio propio
+
+Cada silla actúa con autonomía total dentro de su carril. **No necesita permiso para nada que esté en su carril.**
+
+#### Carril de Claude (Silla A) — Frontend & Producto
+- `src/components/` — todas las pantallas y componentes de UI
+- `src/App.tsx` — lógica principal de la app
+- `src/components/WelcomeModal.tsx`, `LandingScreen.tsx` — copy y flujo de entrada
+- `.github/workflows/` — CI/CD y despliegues
+- `public/` — assets PWA (manifest, icon, service worker)
+- `PARLAMENTO.md` — gobernanza y coordinación
+- `README.md` — identidad del proyecto
+
+#### Carril de Gemini (Silla B) — Backend & Datos
+- `server.ts` — endpoints Express y lógica de servidor
+- `src/firebase.ts` — configuración de Firebase
+- `firestore.rules` — reglas de seguridad de la base de datos
+- `src/types.ts` — interfaces y tipos (puede proponer cambios)
+- `src/data.ts` — catálogos y demos (puede proponer cambios)
+- `firebase-blueprint.json`, `metadata.json` — configuración de infraestructura
+
+#### Zona compartida (proponer antes de tocar)
+- `src/App.tsx` en secciones donde Gemini agregue lógica de datos nueva
+- `src/types.ts` cuando un cambio rompa el carril de Claude
+- Cualquier archivo que no esté en ningún carril arriba
+
+---
+
+### Regla única para trabajo fuera de carril
+
+Si una silla necesita tocar el carril de la otra, escribe una línea en PARLAMENTO **antes** de hacer el cambio:
+
+> `"Necesito modificar [archivo] porque [razón de una oración]. Lo haré así: [descripción de una oración]."`
+
+La otra silla lo leerá en su próxima sesión. Si no hay objeción documentada, el cambio queda. No hay votación, no hay espera activa — el silencio es aprobación implícita.
+
+---
+
+### Reglas absolutas (no requieren Junta, nunca se negocian)
+
+| Regla | Descripción |
 |---|---|
-| Claude (Silla A) | `claude/progress-review-k7ivfu` |
-| Gemini (Silla B) | Puede usar `main` o crear `gemini/sesion-N` |
+| 🚫 **No truncar PARLAMENTO.md** | Solo se agrega al final. Nunca se borra historia. |
+| 🚫 **No tocar `repolink/`** | Producto independiente. ZONA PROTEGIDA. |
+| 🚫 **No eliminar archivos del carril ajeno** | Proponer en PARLAMENTO primero, siempre. |
+| 🚫 **No pushear directo a `main` cambios destructivos** | Refactors grandes van al branch propio primero. |
 
-**Regla de oro:** Ninguna silla hace merge a `main` sin que la otra haya tenido oportunidad de revisar cambios destructivos (eliminaciones de archivos, refactors grandes).
+---
 
-#### 2. Qué sí y qué no sin Junta
+### Cuándo sí escalar al Usuario
 
-| Acción | ¿Requiere Junta? |
-|---|---|
-| Agregar nueva funcionalidad | ❌ No — solo documentar en PARLAMENTO |
-| Corregir un bug (< 10 líneas) | ❌ No |
-| Refactor de un componente existente | ✅ Sí — proponer primero |
-| **Eliminar cualquier archivo** | ✅ Sí — siempre |
-| **Modificar o truncar PARLAMENTO.md** | 🚫 NUNCA truncar — solo agregar al final |
-| Cambiar firestore.rules | ✅ Sí |
-| Tocar `repolink/` | 🚫 NUNCA (ZONA PROTEGIDA) |
+Solo en dos casos — y con una sola pregunta concreta, no un documento de 4 puntos:
 
-#### 3. Protocolo para eliminaciones
+1. **Decisión de producto** que ninguna silla puede resolver técnicamente (ejemplo: "¿pagamos Stripe o no?")
+2. **Conflicto entre sillas** donde ambas tienen razón técnica y hay trade-off real
 
-Antes de borrar cualquier archivo o módulo, Gemini (Silla B) debe:
-1. Escribir en PARLAMENTO: "Propongo eliminar `X` porque `motivo`"
-2. Esperar que Claude (Silla A) lea y apruebe en su siguiente sesión
-3. El Usuario tiene veto final
+En cualquier otro caso, las sillas resuelven entre ellas a través del PARLAMENTO y el código.
 
-#### 4. Protocolo del PARLAMENTO.md
+---
 
-- **SOLO se agrega al final** — nunca se elimina ni reescribe historia pasada
-- Cada sesión agrega su entrada con fecha, qué hizo, qué tocó, y notas para la otra silla
-- Si una silla detecta que la otra truncó el PARLAMENTO, restaura la versión completa inmediatamente
+### Señales de estado al cerrar sesión
 
-#### 5. Votaciones en Juntas
+Terminar cada entrada del PARLAMENTO con una de estas tres líneas:
 
-- Gemini lee la convocatoria y vota **en la siguiente sesión activa**
-- Si Gemini no ha votado en 72 horas, Claude puede implementar con voto único + aprobación del Usuario
-- El Usuario siempre tiene veto y voto final sobre cualquier decisión
-
-#### 6. Señales de estado al cerrar sesión
-
-Cada silla debe terminar su entrada de PARLAMENTO con uno de:
-- `🟢 Sincronizado — estafeta a [Silla]`
-- `🟡 Parcialmente sincronizado — pendiente: [qué]`
-- `🔴 Conflicto detectado — requiere resolución antes de continuar`
+- `🟢 Carril limpio — siguiente: [Silla o Usuario]`
+- `🟡 Crucé al carril de [Silla] para [qué] — sin objeción implica aprobación`
+- `🔴 Bloqueo real — necesito que [Silla/Usuario] decida: [pregunta de una oración]`
 
 ---
 
