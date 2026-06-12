@@ -274,33 +274,33 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
 
         <h1 className="font-display text-4xl sm:text-5xl font-extrabold tracking-tight text-[#EEF1F8] mb-4 leading-tight">
           {cfg.nombre || 'RoutePro'}<br />
-          <span 
+          <span
             className="bg-gradient-to-r from-amber-500 to-amber-300 bg-clip-text text-transparent"
             style={{ backgroundImage: `linear-gradient(135deg, ${cfg.color_principal} 0%, #EEF1F8 100%)` }}
           >
-            {hasSetup ? 'Ventas y Distribución' : 'Control Absoluto'}
+            {hasSetup ? 'Recupera el Control' : 'Control Absoluto'}
           </span>
         </h1>
 
         <div className="w-12 h-[2px] bg-gradient-to-r from-transparent via-amber-500 to-transparent my-5" />
 
         <p className="text-sm text-[#8A93A8] mb-8 max-w-xs leading-relaxed">
-          {cfg.subtitulo || 'Sincronización en la nube, rutas satelitales y caja offline para negocios en crecimiento.'}
+          {hasSetup ? cfg.subtitulo : 'Descubre cuánto dinero estás perdiendo. Ve quién te debe y cuánto. Controla cada producto desde que sale hasta que regresa.'}
         </p>
 
-        {/* Feature chips - PNL focused on safety, speed and growth */}
+        {/* Resultado chips — problema → solución */}
         <div className="flex flex-wrap gap-2 justify-center mb-10 max-w-sm">
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#111520]/90 backdrop-blur-sm border border-emerald-500/10 text-[11px] font-medium text-emerald-400">
-            🛡️ Tecnología Segura
+            ✓ Ve quién te debe hoy
           </span>
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#111520]/90 backdrop-blur-sm border border-amber-500/10 text-[11px] font-medium text-amber-300">
-            ⚡ Autogestión
+            ✓ Controla cada entrega
           </span>
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#111520]/90 backdrop-blur-sm border border-white/5 text-[11px] font-medium text-[#8A93A8]">
-            📍 GPS Satelital
+            ✓ Cierra el día en segundos
           </span>
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#111520]/90 backdrop-blur-sm border border-white/5 text-[11px] font-medium text-[#8A93A8]">
-            📦 Multigiro PyME
+            ✓ Sin internet, sin pérdidas
           </span>
         </div>
 
@@ -391,11 +391,11 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
             </div>
           )}
           
-          {/* Trust & Safety sub-footer with PNL principles */}
+          {/* Pie de página — resultado, no tecnología */}
           <div className="pt-6 text-center space-y-1 select-none pointer-events-none">
-            <p className="text-[10px] text-[#3E4A60] tracking-wider font-semibold uppercase">Confianza y Rapidez</p>
+            <p className="text-[10px] text-[#3E4A60] tracking-wider font-semibold uppercase">RoutePro Elite</p>
             <p className="text-[10px] text-[#8A93A8]/75 max-w-[280px] mx-auto leading-normal">
-              Diseñado para PyMEs en México y Latinoamérica: simple, rápido y con control total en cada reparto.
+              Recupera el control del dinero que hoy no puedes ver.
             </p>
           </div>
         </div>
