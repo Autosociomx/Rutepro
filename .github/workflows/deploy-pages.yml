@@ -1,27 +1,34 @@
-name: Deploy to GitHub Pages
+name: Deploy a Netlify
 
 on:
   push:
-    branches: [main, claude/progress-review-k7ivfu]
+    branches: [main]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
-      - run: npm ci
-      - run: npm run build
-        env:
-          VITE_BASE_PATH: /rutepro/
-      - uses: peaceiris/actions-gh-pages@v4
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy a Netlify
+        uses: nwtgck/actions-netlify@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
+          publish-dir: './dist'
+          production-branch: main
+          production-deploy: true
+          deploy-message: "Deploy ${{ github.sha }}"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
