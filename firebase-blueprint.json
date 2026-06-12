@@ -58,11 +58,19 @@
       "properties": {
         "id": { "type": "string" },
         "nombre": { "type": "string" },
+        "tipo": { "type": "string" },
+        "vendedorId": { "type": "string" },
+        "vendedorNombre": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "direccion": { "type": "string" },
+        "telefono": { "type": "string" },
         "frecuencia": { "type": "string" },
         "ultima_compra": { "type": "number" },
-        "total_comprado": { "type": "number" }
+        "total_comprado": { "type": "number" },
+        "timestamp": { "type": "number" }
       },
-      "required": ["id", "nombre"]
+      "required": ["id", "nombre", "vendedorId"]
     },
     "InventarioRuta": {
       "title": "Inventario de Ruta",

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
-import { Product, Seller, AppConfig, Devolucion, InventarioKilo } from '../types';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, doc, setDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { Product, Seller, AppConfig, Devolucion, Client } from '../types';
 import { validateSale } from '../utils/syncEngine';
 
 interface ClientSaleRecord {
@@ -42,15 +42,11 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
   const [showCliModal, setShowCliModal] = useState(false);
   const [newCliName, setNewCliName] = useState('');
   const [newCliType, setNewCliType] = useState('Abarrotes');
-
-  // Carga Inicial de Ruta (saldo descontable por venta)
-  const [showCargaModal, setShowCargaModal] = useState(false);
-  const [cargaInputs, setCargaInputs] = useState<Record<string, string>>({});
-  const [inventarioRuta, setInventarioRuta] = useState<InventarioKilo[] | null>(null);
-  const [inventarioRutaId, setInventarioRutaId] = useState<string | null>(null);
-
-  // Ruta de migajas — coordenadas GPS de cada venta registrada
-  const [geoPath, setGeoPath] = useState<{ lat: number; lng: number; t: number }[]>([]);
+  const [newCliAddress, setNewCliAddress] = useState('');
+  const [newCliPhone, setNewCliPhone] = useState('');
+  const [selectedPresetClientId, setSelectedPresetClientId] = useState<string>('new');
+  const [misClientes, setMisClientes] = useState<Client[]>([]);
+  const [loadingClientes, setLoadingClientes] = useState(false);
 
   // Route AI Chat state
   const [chatInp, setChatInp] = useState('');
@@ -67,10 +63,29 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setCartRep([]);
     setTipoRep('efectivo');
     setActiveTab('ped');
-    setInventarioRuta(null);
-    setInventarioRutaId(null);
-    setGeoPath([]);
-    setCargaInputs({});
+    setSelectedPresetClientId('new');
+    setNewCliName('');
+    setNewCliType('Abarrotes');
+    setNewCliAddress('');
+    setNewCliPhone('');
+
+    // Fetch clients for this seller
+    setLoadingClientes(true);
+    const qClients = query(collection(db, 'clientes'), where('vendedorId', '==', vnd.id));
+    getDocs(qClients)
+      .then((snap) => {
+        const loaded: Client[] = [];
+        snap.forEach((docSnap) => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as Client);
+        });
+        setMisClientes(loaded);
+      })
+      .catch((err) => {
+        console.warn('Error loading clients from Firestore:', err);
+      })
+      .finally(() => {
+        setLoadingClientes(false);
+      });
 
     // 1. Reconstruct today's shift clients/sales from local rp_ventas to prevent data loss in offline mode
     const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
@@ -98,80 +113,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     const activeDevs = (localDevs as Devolucion[]).filter((d: Devolucion) => d.vendedorId === vnd.id);
     setDevoluciones(activeDevs);
 
-    // Carga inicial: el dueño registra cuánto producto sale en la camioneta
-    setShowCargaModal(true);
-  };
-
-  const handleConfirmCarga = async (vnd: Seller) => {
-    const items: InventarioKilo[] = cfg.productos
-      .map(p => ({ id: p.id, nombre: p.nombre, q: parseFloat(cargaInputs[p.id] || '0') || 0 }))
-      .filter(it => it.q > 0);
-
-    if (items.length === 0) {
-      triggerToast('Captura al menos un producto o usa "Salir sin carga"', 'err');
-      return;
-    }
-
-    const invId = 'INV' + Date.now();
-    const invDoc = {
-      id: invId,
-      vendedorId: vnd.id,
-      vendedorNombre: vnd.nombre,
-      tipo_negocio: cfg.tipo_negocio || 'custom',
-      items,
-      timestamp: Date.now(),
-      estado: 'activa' as const
-    };
-
-    // Fire-and-forget: con persistencia offline el ack del servidor puede tardar
-    // (o llegar horas después); la escritura ya quedó encolada en IndexedDB
-    setDoc(doc(db, 'inventarios_ruta', invId), invDoc)
-      .catch(e => console.error(`Firestore inventarios_ruta/${invId}:`, e));
-    localStorage.setItem('rp_inventario_activo', JSON.stringify(invDoc));
-
-    setInventarioRuta(items);
-    setInventarioRutaId(invId);
-    setShowCargaModal(false);
-    triggerToast(`✓ Carga registrada · Ruta iniciada para ${vnd.nombre}`);
-  };
-
-  const handleSkipCarga = (vnd: Seller) => {
-    setShowCargaModal(false);
-    triggerToast(`Ruta iniciada para ${vnd.nombre} (sin carga inicial)`);
-  };
-
-  // Saldo de carga: cargado − vendido − mermas por producto
-  const vendidoDe = (pid: string) =>
-    cliHoy.reduce((s, c) => s + c.productos.filter(p => p.id === pid).reduce((a, p) => a + p.q, 0), 0);
-  const mermaDe = (pid: string) =>
-    devoluciones.filter(d => d.productoId === pid).reduce((s, d) => s + d.cantidad, 0);
-  const restanteDe = (item: InventarioKilo) => item.q - vendidoDe(item.id) - mermaDe(item.id);
-
-  // GPS no bloqueante: si no hay permiso o señal, la venta se registra igual sin coords
-  const getGeo = (): Promise<{ lat: number; lng: number } | null> =>
-    new Promise((resolve) => {
-      if (!navigator.geolocation) { resolve(null); return; }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => resolve(null),
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
-      );
-    });
-
-  const buildMapsRouteUrl = (): string | null => {
-    if (geoPath.length === 0) return null;
-    if (geoPath.length === 1) {
-      const p = geoPath[0];
-      return `https://www.google.com/maps?q=${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
-    }
-    // Google Maps /dir/ admite ~10 waypoints en URL — muestrear conservando inicio y fin
-    let pts = geoPath;
-    if (pts.length > 10) {
-      const step = Math.ceil(pts.length / 9);
-      pts = pts.filter((_, i) => i % step === 0);
-      if (pts[pts.length - 1] !== geoPath[geoPath.length - 1]) pts.push(geoPath[geoPath.length - 1]);
-    }
-    return 'https://www.google.com/maps/dir/' + pts.map(p => `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`).join('/');
+    triggerToast(`Ruta iniciada para ${vnd.nombre}`);
   };
 
   const handleRegDevol = async () => {
@@ -208,11 +150,6 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     // 1. Guardar de forma local e inmediata para garantizar resiliencia OFFLINE completa
     try {
-      // Fire-and-forget: la cola offline de Firestore sincroniza al volver la señal
-      setDoc(doc(db, 'devoluciones', devolId), newDevol)
-        .catch(e => console.error(`Firestore devoluciones/${devolId}:`, e));
-
-
       // Save locally to local devoluciones list in localStorage
       const prevLocal = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
       prevLocal.push(newDevol);
@@ -261,6 +198,24 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setCartRep(updated);
   };
 
+  const handlePresetClientChange = (clientId: string) => {
+    setSelectedPresetClientId(clientId);
+    if (clientId === 'new') {
+      setNewCliName('');
+      setNewCliType('Abarrotes');
+      setNewCliAddress('');
+      setNewCliPhone('');
+    } else {
+      const match = misClientes.find(c => c.id === clientId);
+      if (match) {
+        setNewCliName(match.nombre);
+        setNewCliType(match.tipo || 'Abarrotes');
+        setNewCliAddress(match.direccion || '');
+        setNewCliPhone(match.telefono || '');
+      }
+    }
+  };
+
   const handleRegCli = async () => {
     if (!newCliName.trim()) {
       triggerToast('Escribe el nombre del cliente', 'err');
@@ -275,24 +230,67 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     const saleId = 'S' + Date.now();
     const nowStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
-    // Advertir (sin bloquear) si se vende más de lo que queda cargado
-    if (inventarioRuta) {
-      for (const item of cartRep) {
-        const inv = inventarioRuta.find(i => i.id === item.id);
-        if (inv && restanteDe(inv) - item.q < 0) {
-          triggerToast(`⚠️ ${item.nombre}: vendes más de lo cargado (quedaban ${restanteDe(inv)})`, 'err');
+    let finalClientId = 'C_NEW_' + Date.now();
+    let finalClientLat = 19.4326;
+    let finalClientLng = -99.1332;
+
+    if (selectedPresetClientId !== 'new') {
+      const existingClient = misClientes.find(c => c.id === selectedPresetClientId);
+      if (existingClient) {
+        finalClientId = existingClient.id;
+        finalClientLat = existingClient.latitude || 19.4326;
+        finalClientLng = existingClient.longitude || -99.1332;
+      }
+    } else {
+      // Create new client in their master route collection
+      const seed = Date.now();
+      const baseLat = 19.4326 + (seed % 100) * 0.0001;
+      const baseLng = -99.1332 - (seed % 100) * 0.0001;
+      finalClientLat = baseLat;
+      finalClientLng = baseLng;
+
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000, maximumAge: 60000 });
+          });
+          finalClientLat = pos.coords.latitude;
+          finalClientLng = pos.coords.longitude;
+        } catch (geoErr) {
+          console.warn('Geolocation mapping fallback engaged:', geoErr);
         }
       }
-    }
 
-    // Ruta de migajas: coordenadas GPS del punto donde se realiza la venta
-    const geo = await getGeo();
+      const newClientDoc: Client = {
+        id: finalClientId,
+        nombre: newCliName.trim(),
+        tipo: newCliType,
+        vendedorId: selectedSeller!.id,
+        vendedorNombre: selectedSeller!.nombre,
+        latitude: finalClientLat,
+        longitude: finalClientLng,
+        direccion: newCliAddress.trim() || 'Dirección de Ruta',
+        telefono: newCliPhone.trim() || 'Sin teléfono',
+        timestamp: Date.now()
+      };
+
+      setMisClientes(prev => [newClientDoc, ...prev]);
+
+      setDoc(doc(db, 'clientes', finalClientId), newClientDoc)
+        .then(() => {
+          console.log(`✓ Master Client ${finalClientId} registered on cloud route database.`);
+        })
+        .catch(err => {
+          console.warn('Client registration background sync stalled:', err);
+        });
+    }
 
     const newCliRecord = {
       id: saleId,
       nombre: newCliName.trim(),
       tipoNegocio: newCliType,
       productos: [...cartRep],
+      type: newCliType,
       tipoCobro: tipoRep,
       total: tot,
       hora: nowStr,
@@ -301,10 +299,9 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     const ventaDocData = {
       id: saleId,
-      tipo_negocio: cfg.tipo_negocio || 'custom',
       vendedorId: selectedSeller!.id,
       vendedorNombre: selectedSeller!.nombre,
-      clienteId: 'C_ROUTE_' + Date.now(),
+      clienteId: finalClientId,
       clienteNombre: newCliName.trim(),
       clienteTipo: newCliType,
       monto: tot,
@@ -317,23 +314,17 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         ic: item.icono
       })),
       timestamp: Date.now(),
-      ...(geo ? { lat: geo.lat, lng: geo.lng } : {}),
       validado: true,
       sincronizado: false
     };
 
-    if (geo) setGeoPath(prev => [...prev, { ...geo, t: Date.now() }]);
-
-    // Real-time local verification/validation of distributor sale
     const validationResult = validateSale(ventaDocData);
     if (!validationResult.isValid) {
       triggerToast(`Fallo de Validación: ${validationResult.reason}`, 'err');
       return;
     }
     
-    // 1. Guardar de forma local e inmediata para evitar cualquier bloqueo en venta de ruta OFFLINE
     try {
-      // Save locally to local sales lists in localStorage
       const prevLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
       prevLocal.push({
         ...ventaDocData,
@@ -343,11 +334,13 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       });
       localStorage.setItem('rp_ventas', JSON.stringify(prevLocal));
 
-      // Append to active UI shift statistics
       setCliHoy([...cliHoy, newCliRecord]);
       setCartRep([]);
       setNewCliName('');
       setNewCliType('Abarrotes');
+      setNewCliAddress('');
+      setNewCliPhone('');
+      setSelectedPresetClientId('new');
       setTipoRep('efectivo');
       setShowCliModal(false);
       triggerToast(`✓ Cliente registrado · ${formatPrice(tot)}`);
@@ -356,7 +349,6 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       triggerToast('Error con almacenamiento de ruta local', 'err');
     }
 
-    // 2. Sincronización en segundo plano con la nube sin retrasar la transacción real en puerta
     const cleanDbData = {
       id: ventaDocData.id,
       vendedorId: ventaDocData.vendedorId,
@@ -373,8 +365,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     setDoc(doc(db, 'ventas', saleId), cleanDbData)
       .then(() => {
-        console.log(`✓ Venta de ruta ${saleId} sincronizada con la nube.`);
-        // Mark as synchronized in local storage
+        console.log(`✓ Venta de ruta ${saleId} sincronizada with cloud.`);
         try {
           const currentLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
           const idx = currentLocal.findIndex((x: any) => x.id === saleId);
@@ -388,18 +379,11 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       })
       .catch((err) => {
         console.warn(`Firestore backup stalled or offline for ventas/${saleId}:`, err);
-        // No bloqueamos. El cache offline robusto de Firestore sincronizará cuando consiga internet.
       });
   };
 
   const handleTerminarRuta = () => {
     setActiveTab('cierr');
-    // Cerrar el inventario de carga en Firestore (estado finalizado, sin esperar ack)
-    if (inventarioRutaId) {
-      setDoc(doc(db, 'inventarios_ruta', inventarioRutaId), { estado: 'finalizado' }, { merge: true })
-        .catch(e => console.error('No se pudo finalizar inventario:', e));
-      localStorage.removeItem('rp_inventario_activo');
-    }
     triggerToast('✓ Resumen de cierre generado');
   };
 
@@ -408,26 +392,11 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setHoraIni(null);
     setCliHoy([]);
     setCartRep([]);
-    setInventarioRuta(null);
-    setInventarioRutaId(null);
-    setGeoPath([]);
-    setCargaInputs({});
   };
 
   const handleWhatsAppReport = () => {
     const tot = cliHoy.reduce((sum, c) => sum + c.total, 0);
-    const mapsUrl = buildMapsRouteUrl();
-    let msg = `*Reporte de Ruta — ${cfg.nombre}*\nVendedor: *${selectedSeller?.nombre}*\nClientes Atendidos: *${cliHoy.length}*\nCobrado en Ruta: *${formatPrice(tot)}*\nFecha: ${new Date().toLocaleDateString('es-MX')}`;
-    if (inventarioRuta) {
-      const regreso = inventarioRuta
-        .map(it => `  • ${it.nombre}: ${restanteDe(it)} a regresar`)
-        .join('\n');
-      msg += `\n\n*Saldo de Carga:*\n${regreso}`;
-    }
-    if (mapsUrl) {
-      msg += `\n\n🗺️ *Ruta recorrida (Google Maps):*\n${mapsUrl}`;
-    }
-    msg += '\nApp: RoutePro Elite';
+    const msg = `*Reporte de Ruta — ${cfg.nombre}*\nVendedor: *${selectedSeller?.nombre}*\nClientes Atendidos: *${cliHoy.length}*\nCobrado en Ruta: *${formatPrice(tot)}*\nFecha: ${new Date().toLocaleDateString('es-MX')}\nApp: RoutePro Elite`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -606,30 +575,6 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         {/* PANEL: PEDIDOS */}
         {activeTab === 'ped' && (
           <div className="space-y-4">
-            {/* Saldo de Carga: lo que queda en la camioneta, descontado en vivo */}
-            {inventarioRuta && (
-              <div className="bg-[#111520] border border-amber-500/10 rounded-xl p-3.5 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono text-[#E8B04A] uppercase tracking-wider font-bold">📦 Saldo de Carga</span>
-                  <span className="text-[9px] text-[#3E4A60] font-bold uppercase">Se descuenta por venta</span>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {inventarioRuta.map((it) => {
-                    const rest = restanteDe(it);
-                    const unidad = cfg.productos.find(p => p.id === it.id)?.unidad || '';
-                    return (
-                      <div key={it.id} className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 border text-[10px] ${rest <= 0 ? 'bg-red-950/20 border-red-500/20' : 'bg-[#181D2B] border-white/5'}`}>
-                        <span className="truncate text-[#8A93A8] font-semibold">{it.nombre}</span>
-                        <span className={`font-bold shrink-0 ${rest <= 0 ? 'text-red-400' : 'text-[#E8B04A]'}`}>
-                          {rest} / {it.q} {unidad}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             {cliHoy.length === 0 ? (
               <div className="text-center py-7 bg-[#111520]/20 rounded-xl border border-dashed border-white/5">
                 <div className="text-3xl opacity-20 mb-1.5">+</div>
@@ -790,46 +735,6 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               </div>
             </div>
 
-            {/* Liquidación de Carga: cargado − vendido − mermas = a regresar */}
-            {inventarioRuta && (
-              <div className="bg-[#111520] border border-white/5 rounded-xl overflow-hidden">
-                <div className="px-3.5 py-2.5 border-b border-white/5 text-[10px] font-mono text-[#E8B04A] uppercase tracking-wider font-bold">
-                  📦 Liquidación de Carga
-                </div>
-                <div className="divide-y divide-white/5">
-                  <div className="grid grid-cols-5 gap-1 px-3.5 py-2 text-[8px] font-bold uppercase tracking-wider text-[#3E4A60]">
-                    <span className="col-span-2">Producto</span>
-                    <span className="text-center">Cargó</span>
-                    <span className="text-center">Vendió</span>
-                    <span className="text-center text-amber-400">Regresa</span>
-                  </div>
-                  {inventarioRuta.map((it) => {
-                    const v = vendidoDe(it.id);
-                    const m = mermaDe(it.id);
-                    const rest = it.q - v - m;
-                    return (
-                      <div key={it.id} className="grid grid-cols-5 gap-1 px-3.5 py-2 text-[10px] items-center">
-                        <span className="col-span-2 truncate font-semibold text-white">{it.nombre}</span>
-                        <span className="text-center text-[#8A93A8]">{it.q}</span>
-                        <span className="text-center text-emerald-400">{v}{m > 0 ? <span className="text-red-400"> +{m}♻</span> : ''}</span>
-                        <span className={`text-center font-bold ${rest < 0 ? 'text-red-400' : 'text-[#E8B04A]'}`}>{rest}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Ruta de migajas en Google Maps */}
-            {geoPath.length > 0 && (
-              <button
-                onClick={() => { const url = buildMapsRouteUrl(); if (url) window.open(url, '_blank'); }}
-                className="w-full py-3 bg-sky-500/10 border border-sky-500/20 text-sky-400 rounded-xl text-xs font-bold transition-all cursor-pointer text-center hover:bg-sky-500/15"
-              >
-                🗺️ Ver Ruta Recorrida en Google Maps ({geoPath.length} puntos GPS)
-              </button>
-            )}
-
             <div className="flex gap-2">
               <button onClick={() => triggerToast('🖨️ Conectando impresora Bluetooth térmica...')} className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold hover:bg-[#181D2B] text-white transition-all cursor-pointer text-center">
                 🖨️ Ticket
@@ -842,20 +747,12 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
               </button>
             </div>
 
-            <div className="flex gap-2.5">
-              <button
-                onClick={handleNuevaRuta}
-                className="flex-1 py-4.5 hover:brightness-105 rounded-xl text-xs font-extrabold tracking-wide cursor-pointer bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 transition-all text-center"
-              >
-                🔄 Nueva Ruta
-              </button>
-              <button
-                onClick={onGoBack}
-                className="flex-1 py-4.5 hover:brightness-105 rounded-xl text-xs font-extrabold tracking-wide cursor-pointer bg-[#111520] border border-white/10 text-[#8A93A8] hover:text-white transition-all text-center"
-              >
-                🏠 Salir al Inicio
-              </button>
-            </div>
+            <button 
+              onClick={handleNuevaRuta} 
+              className="w-full py-4.5 hover:brightness-105 rounded-xl text-xs font-extrabold tracking-wide text-ink cursor-pointer bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 transition-all text-center block"
+            >
+              🔄 Nueva Ruta / Nueva Jornada
+            </button>
           </div>
         )}
 
@@ -957,31 +854,81 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-fade-in text-left">
           <div className="bg-[#111520] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5.5 w-full sm:max-w-md max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl">
             <div className="font-display font-bold text-base text-white">Registrar Entrega de Ruta</div>
+            
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Seleccionar Cliente de tu Ruta</label>
+              <select
+                value={selectedPresetClientId}
+                onChange={(e) => handlePresetClientChange(e.target.value)}
+                className="bg-[#181D2B] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+              >
+                <option value="new">➕ REGISTRAR NUEVO CLIENTE (Guarda ubicación GPS)</option>
+                {misClientes.map(c => (
+                  <option key={c.id} value={c.id}>
+                    👤 {c.nombre} ({c.tipo || 'Abarrotes'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex flex-col gap-1">
               <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Nombre del Cliente</label>
               <input 
                 type="text" 
                 value={newCliName} 
                 onChange={(e) => setNewCliName(e.target.value)} 
-                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                disabled={selectedPresetClientId !== 'new'}
+                className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
                 placeholder="Ej: Abarrotes Doña Rosa"
               />
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Tipo de Negocio / Giro</label>
-              <div className="flex flex-wrap gap-1.5">
-                {['Abarrotes', 'Miscelánea', 'Depósito', 'Materias Primas', 'Restaurante', 'Otro'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setNewCliType(t)}
-                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg cursor-pointer transition-all ${newCliType === t ? 'bg-[#E8B04A] text-black shadow-[0_0_10px_rgba(232,176,74,0.3)]' : 'bg-[#181D2B] border border-white/5 text-[#8A93A8] hover:text-white'}`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
+              {selectedPresetClientId !== 'new' ? (
+                <div className="text-xs font-bold text-amber-400 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/10 inline-block w-fit">
+                  {newCliType}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {['Abarrotes', 'Miscelánea', 'Depósito', 'Materias Primas', 'Restaurante', 'Otro'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setNewCliType(t)}
+                      className={`px-3 py-1.5 text-[10px] font-bold rounded-lg cursor-pointer transition-all ${newCliType === t ? 'bg-[#E8B04A] text-black shadow-[0_0_10px_rgba(232,176,74,0.3)]' : 'bg-[#181D2B] border border-white/5 text-[#8A93A8] hover:text-white'}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {selectedPresetClientId === 'new' && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Dirección (Opcional)</label>
+                  <input 
+                    type="text" 
+                    value={newCliAddress} 
+                    onChange={(e) => setNewCliAddress(e.target.value)} 
+                    className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    placeholder="Calle, Número y Colonia"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Teléfono (Opcional)</label>
+                  <input 
+                    type="text" 
+                    value={newCliPhone} 
+                    onChange={(e) => setNewCliPhone(e.target.value)} 
+                    className="bg-[#181D2B] border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    placeholder="Ej: 5512345678"
+                  />
+                </div>
+              </>
+            )}
 
             {/* Configured Products Grid to dynamically click & add */}
             <div className="space-y-1.5">
@@ -1090,67 +1037,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         </div>
       )}
 
-      {/* MODAL: CARGA INICIAL DE RUTA */}
-      {showCargaModal && selectedSeller && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-fade-in text-left">
-          <div className="bg-[#111520] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5.5 w-full sm:max-w-md max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl">
-            <div>
-              <div className="font-display font-bold text-base text-white flex items-center gap-2">
-                <span>📦</span>
-                <span>Carga Inicial de Ruta</span>
-              </div>
-              <p className="text-[10px] text-[#8A93A8] mt-1.5 leading-relaxed">
-                Registra cuánto producto sale en la camioneta de <span className="text-[#E8B04A] font-bold">{selectedSeller.nombre}</span>.
-                El saldo se descuenta automáticamente con cada venta y al cierre verás cuánto debe regresar.
-              </p>
-            </div>
-
-            <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-              {cfg.productos.map((prod) => (
-                <div key={prod.id} className="bg-[#181D2B] border border-white/5 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="shrink-0">{prod.icono || '📦'}</span>
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold text-white truncate">{prod.nombre}</div>
-                      <div className="text-[9px] text-[#3E4A60]">{formatPrice(prod.precio)} / {prod.unidad}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      inputMode="decimal"
-                      value={cargaInputs[prod.id] || ''}
-                      onChange={(e) => setCargaInputs({ ...cargaInputs, [prod.id]: e.target.value })}
-                      className="w-16 bg-[#0B0E14] border border-white/5 rounded-lg p-2 text-center text-xs text-[#E8B04A] font-bold focus:outline-none focus:border-amber-500"
-                      placeholder="0"
-                    />
-                    <span className="text-[9px] text-[#3E4A60] font-bold w-7">{prod.unidad}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2.5">
-              <button
-                onClick={() => handleSkipCarga(selectedSeller)}
-                className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#8A93A8] hover:text-white cursor-pointer active:scale-97 transition-all text-center"
-              >
-                Salir sin carga
-              </button>
-              <button
-                onClick={() => handleConfirmCarga(selectedSeller)}
-                className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-400 font-bold text-xs text-[#06080C] hover:brightness-110 rounded-xl cursor-pointer active:scale-97 transition-all text-center"
-              >
-                ✓ Cargar y Salir a Ruta
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: REGISTRAR MERMA / DEVOLUCION */}
+      {/* MODAL: REGISTER MERMA / DEVOLUCION */}
       {showDevolModal && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-fade-in text-left">
           <div className="bg-[#111520] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5.5 w-full sm:max-w-md max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl">

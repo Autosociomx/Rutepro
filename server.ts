@@ -74,7 +74,7 @@ ${recentActivity || "Servicios ordinarios en las últimas jornadas de reparto."}
 Sugerir un inventario ideal de salida para cada producto en el catálogo. Retorna un ajuste inteligente basado en el giro de negocio y el día de la semana.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash',
         contents: promptString,
         config: {
           systemInstruction: 'Eres "RoutePro Elite AI", una inteligencia artificial que ayuda a dueños de negocios móviles de distribución, reparto o venta a optimizar la salida de inventario de sus vehículos. Minimiza pérdidas, calcula mermas y asegura abasto según el día de la semana.',
@@ -183,7 +183,7 @@ Sugerir un inventario ideal de salida para cada producto en el catálogo. Retorn
 Establece un nombre de marca elegante en español mexicano, un subtítulo descriptivo, una letra de logotipo (1 o 2 letras), un color hexadecimal primario hermoso que combine, una lista de 4 a 6 productos estrella realistas con precios detallados en centavos (ej: $18.50 pesos es 1850 cents, $100.00 pesos es 10000 cents) y unidades correctas, y una lista de 2 a 3 trabajadores mexicanos en sus respectivas rutas.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash',
         contents: promptString,
         config: {
           systemInstruction: 'Eres "RoutePro Setup Engine", un formateador estructurado que genera configuraciones de negocio instantáneas, profesionales y realistas para dueños de empresas de distribución, mostrador o ventas móviles.',
@@ -448,7 +448,7 @@ Tu tarea es usar la herramienta de búsqueda de Google para encontrar informaci�
 Genera un archivo de configuración JSON perfectamente detallado y en español de México.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash',
         contents: promptString,
         config: {
           systemInstruction: 'Eres "RoutePro Web Crawler AI". Buscas de forma confiable información comercial de marcas o restaurantes en base a su URL y produces una configuración de negocio estructurada en formato JSON estricto.',
@@ -520,7 +520,7 @@ Genera un archivo de configuración JSON perfectamente detallado y en español d
 
         // 1. Utilize Gemini's text model intelligence to craft a beautiful, high-quality, professional logo prompt (chido)
         const promptExpansionResponse = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-3.5-flash',
           contents: `You are an veteran design officer and elite brand identity strategist. 
 Expand the following query into a beautiful, extremely polished, highly detailed English prompt suitable for a modern image-generation model (like gemini-2.5-flash-image) to create a stunning, visually awesome ("bien chido") app logo.
 
@@ -682,22 +682,39 @@ OUTPUT ONLY the optimized final prompt text in plain English. Do not add intro, 
   // API Route for server-side business intelligence chat (chatbot in Panel del Dueño)
   app.post('/api/chat', async (req, res) => {
     try {
-      const { question, config_negocio, ventas, vendedores, chatHistory } = req.body;
+      const { question, config_negocio, ventas, vendedores, chatHistory, abonos, clientesLedger } = req.body;
 
       let ai;
       try {
         ai = getGemini();
       } catch (err) {
-        // Fallback offline answers if no Gemini API Key is configured yet
+        // Fallback offline answers if no Gemini API Key is configured yet, incorporating time, calendar, CDS, Mystery Shop, and client ledger skills
         const qLower = (question || '').toLowerCase();
-        let ans = 'Analizando tu consulta de forma local. ';
-        if (qLower.includes('ruta') || qLower.includes('vendedor')) {
-          ans += `Llevas un récord de rutas activas hoy. Contamos con ${vendedores?.length || 0} integrantes registrados.`;
-        } else if (qLower.includes('efectivo') || qLower.includes('dinero') || qLower.includes('caja')) {
-          const tot = (ventas || []).reduce((sum: number, v: any) => sum + (v.monto || 0), 0);
-          ans += `La caja general total acumulada hoy es de $${(tot / 100).toFixed(2)}.`;
+        let ans = 'Asistente Corporativo (Modo Local): ';
+        
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = now.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+        if (qLower.includes('hora') || qLower.includes('tiempo') || qLower.includes('reloj')) {
+          ans += `La hora local en el Centro de Distribución (CDS) es exactamente las ${timeStr}.`;
+        } else if (qLower.includes('calendario') || qLower.includes('fecha') || qLower.includes('dia') || qLower.includes('día')) {
+          ans += `La fecha operativa en el calendario es ${dateStr}. Útil para calendarizar despachos y optimizar descansos de choferes.`;
+        } else if (qLower.includes('misterioso') || qLower.includes('mystery') || qLower.includes('auditor') || qLower.includes('shop')) {
+          ans += `El Módulo de Cliente Misterioso está activo para validar que los choferes cobren precios oficiales del catálogo, entreguen recibos/tickets impresos, cuiden la limpieza del uniforme y den un trato cortés de bienvenida en calle.`;
+        } else if (qLower.includes('deuda') || qLower.includes('debe') || qLower.includes('saldo') || qLower.includes('pendiente') || qLower.includes('abono') || qLower.includes('pago')) {
+          const unpaidClients = (clientesLedger || []).filter((c: any) => c.saldo_actual > 0);
+          const totalPend = unpaidClients.reduce((sum: number, c: any) => sum + c.saldo_actual, 0);
+          ans += `Cuentas de Clientes por Cobrar: Tenemos ${unpaidClients.length} cuentas pendientes con un saldo acumulado total de $${(totalPend / 100).toFixed(2)}. `;
+          if (unpaidClients.length > 0) {
+            ans += `Los mayores deudores registrados son: ` + unpaidClients.slice(0, 3).map((u: any) => `${u.nombre} ($${(u.saldo_actual / 100).toFixed(2)})`).join(', ') + `.`;
+          }
+        } else if (qLower.includes('his') || qLower.includes('compr') || qLower.includes('ventas') || qLower.includes('recib')) {
+          ans += `Soporte de Auditoría de Cuentas: He analizado el historial. Hoy registramos ${ventas?.length || 0} visitas validadas en ruta. Al pulsar en la tarjeta 'CLIENTES' o 'SALDO PENDIENTE' del panel de control de RoutePro, puedes exportar o ver el recibo detallado con fecha, hora, chofer y desglose de kilos/piezas para dárselo de respaldo aclaratorio al cliente.`;
+        } else if (qLower.includes('cds') || qLower.includes('centro') || qLower.includes('cedis') || qLower.includes('distribucion') || qLower.includes('distribución')) {
+          ans += `El CDS (Centro de Distribución) es el núcleo logístico de RoutePro. Coordina la asignación sugerida por IA de mermas y devoluciones, reduciendo viajes redundantes y abaratando costos de combustible.`;
         } else {
-          ans += `Se registraron ${ventas?.length || 0} ventas totales hoy. Configura el GEMINI_API_KEY en Settings para activar asesoría en tiempo real con IA.`;
+          ans += `Tengo cargados los balances de tus clientes. Pregúntame sobre cuentas deudoras, saldos de crédito actuales, mermas de ruta, el reloj de la sucursal o los estándares operativos.`;
         }
         return res.json({ text: ans });
       }
@@ -708,33 +725,75 @@ OUTPUT ONLY the optimized final prompt text in plain English. Do not add intro, 
       const activeSellersStr = JSON.stringify(vendedores || []);
       
       const salesOverview = (ventas || []).map((v: any) => ({
-        vendedor: v.vendedor_nombre,
+        vendedor: v.vendedor_nombre || v.vendedorNombre,
         monto: v.monto ? (v.monto / 100).toFixed(2) : '0.00',
         tipoCobro: v.tipo_cobro || v.tipoCobro,
-        cliente: v.cliente_nombre || v.nombre,
+        cliente: v.cliente_nombre || v.clienteNombre,
         hora: v.hora,
         items: v.productos || v.items
       }));
 
-      const contextPrompt = `Eres el Asesor Financiero e Inteligente de "${businessName}". 
-El dueño del negocio se está comunicando contigo en tiempo real para monitorear las finanzas, ventas de las rutas y rendimiento.
-Configuración de Productos en Catálogo: ${productsStr}
-Vendedores actuales de la corporación: ${activeSellersStr}
-Resumen detallado de Ventas recibidas Hoy:
-${JSON.stringify(salesOverview)}
+      const abonosOverview = (abonos || []).map((ab: any) => ({
+        cliente: ab.clienteNombre,
+        monto: ab.monto ? (ab.monto / 100).toFixed(2) : '0.00',
+        fecha: ab.fecha,
+        recibidoPor: ab.recibidoPor || 'Caja'
+      }));
 
-Historial de conversación si lo hay:
+      const ledgerOverview = (clientesLedger || []).map((c: any) => ({
+        nombre: c.nombre,
+        comprasTotales: (c.total_compras / 100).toFixed(2),
+        totalPagadoEnAbonos: (c.total_abonos / 100).toFixed(2),
+        saldoDeudaActualXCobrar: (c.saldo_actual / 100).toFixed(2),
+        frecuenciaVisitas: c.visitas_totales,
+        detallesUbicacion: c.direccion || 'Ruta de entrega ordinaria'
+      }));
+
+      const localTimeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const localDateStr = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+      const contextPrompt = `Eres el Asesor Financiero e Inteligente de la plataforma corporativa RoutePro para "${businessName}". 
+El dueño del negocio se está comunicando en tiempo real contigo para auditar finanzas, monitorear la sucursal y coordinar el personal.
+
+=== Habilidades de Tiempo y Calendario (Time & Calendar Skills) ===
+- Se te ha enseñado a manejar el tiempo oficial de la sucursal y usar agendas de turnos.
+- La HORA LOCAL actual en el Centro de Distribución es: ${localTimeStr}
+- La FECHA actual en el calendario operativo es: ${localDateStr}.
+
+=== Cuentas de Clientes por Cobrar, Saldos de Crédito e Historial (Accounts Receivable & Ledger) ===
+- El usuario te pregunta frecuentemente por deudas de clientes específicos ("¿Cuánto me debe Doña Carmen?" o "Saldos pendientes").
+- Posees acceso total a los saldos por cobrar, compras históricas e historial de abonos del negocio:
+  * Balances de Clientes Activos (Ledger): ${JSON.stringify(ledgerOverview)}
+  * Pagos / Abonos Recientes Sincronizados: ${JSON.stringify(abonosOverview)}
+- Tienes como meta clave proveer respuestas exactas y numéricas en pesos mexicanos para evitar malentendidos entre choferes y clientes.
+- Explica de forma asertiva que el panel cuenta con recibos de respaldo ("Ticket de Verificación") con firmas y desgloses de piezas/kilos para resolver disputas contables con clientes que no estén de acuerdo con sus distributors.
+
+=== Dirección del CDS (Centro de Distribución) y Rutas ===
+- Sabes perfectamente qué es un CDS/CEDIS (Centro de Distribución) y eres especialista en la optimización de rutas de última milla.
+- Entiendes el flujo logístico de asignación de carga inicial, rebalanceo para evitar desabastos, manejo de mermas y devolución de inventario no vendido al almacén central.
+
+=== Estructuración de Sesiones de Usuario (User Shifts / Session Engineering) ===
+- Una sesión típica de repartidor se divide en: 1) Check-In de Carga, 2) Ventas en Calle con emisión de tickets de respaldo, 3) Check-Out de liquidación financiera y conciliación en el CEDIS.
+
+=== Módulo Activo de Cliente Misterioso (Mystery Shop) ===
+- El sistema tiene activas auditorías de "Cliente Misterioso" (auditorías encubiertas) para blindar el negocio ante fraudes, evaluando Cobro oficial del catálogo, Entrega de ticket, Orden y Trato cortés en ruta.
+
+=== Transacciones de hoy recibidas en el Cdis ===
+- Detalle de ventas en vivo de hoy: ${JSON.stringify(salesOverview)}
+
+Historial de chat reciente:
 ${JSON.stringify(chatHistory || [])}
 
-Pregunta del Dueño: "${question}"
+Pregunta o instrucción del dueño: "${question}"
 
 Instrucciones de Respuesta:
-1. Responde de manera profesional, amigable y muy concisa (máximo 3 líneas de texto).
-2. Usa modismos educados de español mexicano si se requiere.
-3. Utiliza los datos económicos reales anteriores para dar respuestas sumamente precisas y analíticas. Di exactamente qué ruta vendió más, cuánto dinero hay en total, etc.`;
+1. Responde de manera altamente resolutiva, precisa, profesional y empática (máximo 4 renglones).
+2. Usa modismos educados, profesionales y amigables de español de México.
+3. Cita números reales, montos y nombres exactos si el usuario te pregunta por saldos o estados de clientes. ¡Nunca inventes montos de deudas! Si un cliente no está en la lista de ledger, dilo de forma clara y sugiere registrar su primera venta a crédito en sucursal o reparto.
+4. Apóyalos con ideas brillantes sobre conciliación diaria, balanceo de saldos de crédito y cómo el Módulo de Verificación de Historial en RoutePro Elite evita fugas de dinero y disputas de cobro.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash',
         contents: contextPrompt,
         config: {
           temperature: 0.7,
