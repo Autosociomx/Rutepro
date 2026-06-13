@@ -432,7 +432,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       const data = await response.json();
       setChatLogs([...newLogs, { role: 'bot', text: data.text || 'Sin respuesta del asesor de ruta.' }]);
     } catch (err) {
-      setChatLogs([...newLogs, { role: 'bot', text: 'Asistencia offline: ¡Sigue con el excelente trabajo en tu zona de reparto! Configura tu GEMINI_API_KEY para habilitar asesoría en ruta completa.' }]);
+      setChatLogs([...newLogs, { role: 'bot', text: 'Asistencia sin conexión activa. Sigue registrando entregas normalmente — tus datos están guardados y se sincronizan cuando recuperes señal.' }]);
     } finally {
       setChatLoading(false);
     }
@@ -529,12 +529,12 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       {/* Driver KPIs */}
       <div className="px-4.5 pt-3.5 pb-1 shrink-0 grid grid-cols-3 gap-2">
         <div className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center">
-          <div className="text-xs font-bold text-[#E8B04A] tracking-wider">{formatPrice(shiftTotal)}</div>
-          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Cobrado</div>
+          <div className="text-xs font-bold text-emerald-400 tracking-wider">{formatPrice(cliHoy.filter(c => c.tipoCobro === 'efectivo').reduce((s, c) => s + c.total, 0))}</div>
+          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Efectivo</div>
         </div>
         <div className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center">
-          <div className="text-xs font-bold text-[#EEF1F8] tracking-wider">{cliHoy.length}</div>
-          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Clientes</div>
+          <div className="text-xs font-bold text-[#E8B04A] tracking-wider">{formatPrice(cliHoy.filter(c => c.tipoCobro === 'credito').reduce((s, c) => s + c.total, 0))}</div>
+          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">A Crédito</div>
         </div>
         <div className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center">
           <div className="text-xs font-bold text-red-400 tracking-wider">{devoluciones.length}</div>
@@ -736,12 +736,12 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => triggerToast('🖨️ Conectando impresora Bluetooth térmica...')} className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold hover:bg-[#181D2B] text-white transition-all cursor-pointer text-center">
-                🖨️ Ticket
-              </button>
-              <button onClick={() => triggerToast('📥 Exportando archivo de Liquidación CSV...')} className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold hover:bg-[#181D2B] text-white transition-all cursor-pointer text-center">
-                📥 CSV
-              </button>
+              <div className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold text-[#3E4A60] text-center select-none" title="Próximamente">
+                🖨️ <span className="text-[9px]">Próximamente</span>
+              </div>
+              <div className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold text-[#3E4A60] text-center select-none" title="Próximamente">
+                📥 <span className="text-[9px]">Próximamente</span>
+              </div>
               <button onClick={handleWhatsAppReport} className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-green-500/10 border-green-500/20 text-green-400 text-xs font-bold transition-all cursor-pointer text-center">
                 📱 WhatsApp
               </button>
@@ -1091,8 +1091,9 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
                 onClick={() => {
                   setShowDevolModal(false);
                   setDevolClienteName('');
+                  setSelectedDevolProdId('');
                   setDevolCant(1);
-                }} 
+                }}
                 className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#8A93A8] hover:text-white cursor-pointer active:scale-97 transition-all text-center"
               >
                 Cancelar

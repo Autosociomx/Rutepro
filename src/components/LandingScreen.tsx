@@ -223,8 +223,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
       setPinError('Ingresa la clave de administración');
       return;
     }
-    // Let's accept any standard pin or '1234'
-    if (adminPin === '1234' || adminPin.trim() !== '') {
+    const storedPin = localStorage.getItem('rp_admin_pin') || '1234';
+    if (adminPin === storedPin) {
       setShowAdminLock(false);
       setAdminPin('');
       setPinError('');
@@ -433,7 +433,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                   <span className="text-[10px] text-red-400 font-semibold">⚠️ {pinError}</span>
                 )}
                 <span className="text-[10px] text-[#3E4A60] leading-normal">
-                  (Por defecto: <strong className="text-[#8A93A8]">1234</strong>, o presiona <strong>"Entrar directo"</strong> para saltar el PIN)
+                  Clave configurada por el administrador del negocio.
                 </span>
               </div>
             </div>
