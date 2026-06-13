@@ -24,7 +24,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   const [selectedCardDetails, setSelectedCardDetails] = useState<'ventas' | 'clientes' | 'saldo' | 'rutas' | null>(null);
   
   // Structured Route / Clients Sequence Map Tracking
-  const [clientSubTab, setClientSubTab] = useState<'rutas' | 'cartera'>('rutas');
+  const [clientSubTab, setClientSubTab] = useState<'rutas' | 'cartera' | 'metas'>('rutas');
   const [selectedRouteSellerId, setSelectedRouteSellerId] = useState<string>('');
   const [selectedStopIndex, setSelectedStopIndex] = useState<number>(0);
 
@@ -836,7 +836,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
               }}
               className="p-3 bg-red-650/10 border border-red-500/20 rounded-xl hover:bg-red-650/20 text-left text-xs text-red-400 cursor-pointer transition-all"
             >
-              🧹 Limpiar Base a Cerdos ($0)
+              🧹 Reiniciar Balance a $0
             </button>
           </div>
 
@@ -857,7 +857,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
         
         {/* Welcoming Greeting Slogan */}
         <div className="text-left space-y-1 py-1">
-          <div className="text-sm font-display font-medium text-gray-400">¡Buenos días, Administrador!</div>
+          <div className="text-sm font-display font-medium text-gray-400">{(() => { const h = new Date().getHours(); return h < 12 ? '¡Buenos días, Administrador!' : h < 19 ? '¡Buenas tardes, Administrador!' : '¡Buenas noches, Administrador!'; })()}</div>
           <h2 className="text-xl font-display font-extrabold text-white tracking-tight leading-none">Aquí tienes el resumen de hoy</h2>
           <p className="text-[10px] text-gray-500 font-mono mt-0.5" style={{ color: `${cfg.color_principal}E0` }}>{cfg.subtitulo || 'RoutePro Elite Shift Control'}</p>
         </div>
