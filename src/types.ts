@@ -60,6 +60,8 @@ export interface Venta {
   items: VentaItem[];
   timestamp: number;
   hora?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface Devolucion {

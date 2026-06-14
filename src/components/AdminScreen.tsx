@@ -1470,6 +1470,17 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                           Mapa Satelital de Ruta: {cfg.vendedores.find(v => v.id === selectedRouteSellerId)?.ruta || 'Buscando...'}
                         </div>
+                        {/* Leyenda de pines */}
+                        <div className="absolute bottom-2 right-2.5 bg-black/70 border border-white/8 px-2 py-1.5 rounded pointer-events-none z-10 flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 opacity-90" />
+                            <span className="font-mono text-[6px] text-gray-400 uppercase tracking-wider">Venta efectivo</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 opacity-90" />
+                            <span className="font-mono text-[6px] text-gray-400 uppercase tracking-wider">Venta crédito</span>
+                          </div>
+                        </div>
 
                         <div className="w-full aspect-[16/9] min-h-[200px]">
                           <svg viewBox="0 0 380 220" className="w-full h-full text-white overflow-visible select-none font-sans" style={{ background: '#070A11' }}>
@@ -1540,10 +1551,10 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                               const isSelected = selectedStopIndex === idx;
                               const isReal = st.isReal;
                               const pinColor = isReal ? '#10B981' : (st.saldoDeuda > 0 ? '#F59E0B' : '#8A93A8');
-                              
+
                               return (
-                                <g 
-                                  key={`pin_${st.id}`} 
+                                <g
+                                  key={`pin_${st.id}`}
                                   transform={`translate(${st.x}, ${st.y})`}
                                   className="cursor-pointer transition-all"
                                   onClick={() => setSelectedStopIndex(idx)}
@@ -1552,12 +1563,12 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                                     <circle r="14" fill={`${cfg.color_principal}22`} stroke={cfg.color_principal} strokeWidth="1.2" strokeDasharray="3,3" />
                                   )}
                                   <circle r="9" fill={isSelected ? cfg.color_principal : '#111520'} stroke={pinColor} strokeWidth="2" filter={isSelected ? 'url(#svgGlow)' : ''} />
-                                  <text 
-                                    x="0" 
-                                    y="3" 
-                                    fill={isSelected ? '#06080C' : '#EEF1F8'} 
-                                    fontSize="8" 
-                                    fontWeight="900" 
+                                  <text
+                                    x="0"
+                                    y="3"
+                                    fill={isSelected ? '#06080C' : '#EEF1F8'}
+                                    fontSize="8"
+                                    fontWeight="900"
                                     textAnchor="middle"
                                   >
                                     {st.index}
@@ -1575,6 +1586,37 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                                 </g>
                               );
                             })}
+
+                            {/* Pines de eventos de venta con coordenadas GPS reales */}
+                            {(() => {
+                              const stops = getRouteBreadcrumbs(selectedRouteSellerId);
+                              const sellerVentas = ventas.filter(v =>
+                                v.vendedorId === selectedRouteSellerId && v.lat != null && v.lng != null
+                              );
+                              if (sellerVentas.length === 0) return null;
+
+                              const allLats = [...stops.map(s => s.latitude), ...sellerVentas.map(v => v.lat!)];
+                              const allLngs = [...stops.map(s => s.longitude), ...sellerVentas.map(v => v.lng!)];
+                              const minLat = Math.min(...allLats);
+                              const maxLat = Math.max(...allLats);
+                              const minLng = Math.min(...allLngs);
+                              const maxLng = Math.max(...allLngs);
+                              const latDiff = maxLat - minLat;
+                              const lngDiff = maxLng - minLng;
+
+                              return sellerVentas.map((v, i) => {
+                                const x = lngDiff > 0.00001 ? 80 + ((v.lng! - minLng) / lngDiff) * 230 : 180;
+                                const y = latDiff > 0.00001 ? 170 - ((v.lat! - minLat) / latDiff) * 120 : 110;
+                                const dotColor = v.tipoCobro === 'crédito' ? '#F59E0B' : '#10B981';
+                                return (
+                                  <g key={`venta_pin_${v.id || i}`} transform={`translate(${x}, ${y})`}>
+                                    <circle r="6" fill={dotColor} opacity="0.18" />
+                                    <circle r="3.5" fill={dotColor} opacity="0.9" />
+                                    <circle r="1.5" fill="#fff" opacity="0.95" />
+                                  </g>
+                                );
+                              });
+                            })()}
                           </svg>
                         </div>
                       </div>

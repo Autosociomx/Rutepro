@@ -315,6 +315,8 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         pr: item.pr,
         ic: item.icono
       })),
+      lat: finalClientLat,
+      lng: finalClientLng,
       timestamp: Date.now(),
       validado: true,
       sincronizado: false
