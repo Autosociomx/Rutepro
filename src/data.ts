@@ -44,7 +44,7 @@ export const DEMOS: DemoConfig[] = [
     subtitulo: 'Tostadas raspadas, cevicheras, salsas',
     color: '#D97706',
     businessName: 'Tostadas Nayaritas',
-    insight: 'El auténtico sabor tradicional de Nayarit. Automatiza rutas de tostadas, tortillas de nixtamal y salsas, optimizando mermas y previniendo quiebres de stock.',
+    insight: '¿Cuánto producto sale cada día sin quedar registrado? Con RoutePro cada entrega y cada pago queda en el sistema — el fiado se cobra, la merma se ve, el día cuadra.',
     productos: [
       { id: 'NY1', icono: '🫓', nombre: 'Tostadas Raspadas (Paquete Familiar)', precio: 3800, unidad: 'pac' },
       { id: 'NY2', icono: '🌮', nombre: 'Tostadas Cevicheras Crujientes', precio: 3500, unidad: 'pac' },
@@ -66,7 +66,7 @@ export const DEMOS: DemoConfig[] = [
     subtitulo: 'Pan, teleras, pasteles',
     color: '#C9822A',
     businessName: 'Panadería El Trigo Dorado',
-    insight: 'Con RoutePro sabrás qué rutas se quedan sin pan antes del mediodía para <strong>reducir la merma hasta un 40%</strong>.',
+    insight: 'Las panaderías con rutas tienen hasta 23% de fiado que nunca regresa registrado. Con RoutePro ese número se vuelve visible — y cobrable — desde el primer día.',
     productos: [
       { id: 'P1', icono: '🍞', nombre: 'Pan bolillo', precio: 150, unidad: 'pza' },
       { id: 'P2', icono: '🥖', nombre: 'Pan telera', precio: 200, unidad: 'pza' },
@@ -88,7 +88,7 @@ export const DEMOS: DemoConfig[] = [
     subtitulo: 'Tortillas, tostadas, sopes',
     color: '#E67E22',
     businessName: 'Tortillería La Favorita',
-    insight: 'Cada ruta tiene un patrón diferente. RoutePro te dice <strong>cuántos kilos llevar por ruta</strong> y en qué días hay más devolución.',
+    insight: '¿Sabes exactamente cuántos kilos vendió cada ruta hoy? RoutePro registra despachos, devoluciones y cuentas por cobrar en tiempo real — desde el celular del repartidor.',
     productos: [
       { id: 'P1', icono: '🌮', nombre: 'Tortilla kg', precio: 1800, unidad: 'kg' },
       { id: 'P2', icono: '🫓', nombre: 'Tostadas 30pz', precio: 2500, unidad: 'pac' },
@@ -110,7 +110,7 @@ export const DEMOS: DemoConfig[] = [
     subtitulo: 'Garrafones, botellones, ruta',
     color: '#4A8FFF',
     businessName: 'Purificadora Agua Cristal',
-    insight: '<strong>Dato de oro:</strong> sabrás cada cuántos días se acaba el garrafón por cliente y anticipar el resurtido — <strong>cero llamadas perdidas, cero clientes sin agua</strong>.',
+    insight: 'Con RoutePro sabes cuándo necesita garrafón cada cliente antes de que llame — cero clientes sin agua, cero días perdidos rastreando pedidos por teléfono.',
     productos: [
       { id: 'P1', icono: '💧', nombre: 'Garrafón 20L', precio: 3500, unidad: 'garrafón' },
       { id: 'P2', icono: '🫙', nombre: 'Botellón 10L', precio: 2000, unidad: 'botellón' },
@@ -132,7 +132,7 @@ export const DEMOS: DemoConfig[] = [
     subtitulo: 'Cortes, molida, embutidos',
     color: '#C0392B',
     businessName: 'Carnicería El Rancho',
-    insight: 'Controla qué ruta vende más res vs pollo. <strong>Optimiza el corte del día con datos reales</strong> de cada ruta.',
+    insight: 'Los cortes a crédito son el punto ciego más costoso de una carnicería. Con RoutePro cada cuenta queda registrada y el cierre del día cuadra en minutos.',
     productos: [
       { id: 'P1', icono: '🥩', nombre: 'Bistec res kg', precio: 18000, unidad: 'kg' },
       { id: 'P2', icono: '🍗', nombre: 'Pollo entero kg', precio: 9000, unidad: 'kg' },
@@ -153,7 +153,7 @@ export const DEMOS: DemoConfig[] = [
     subtitulo: 'Refrescos, botanas, abarrotes',
     color: '#8E44AD',
     businessName: 'Distribuidora Norteña',
-    insight: 'Con 3 rutas puedes tener <strong>más de 200 clientes activos</strong>. RoutePro centraliza pedidos, crédito y entrega — en tiempo real desde el celular.',
+    insight: 'Con 3 rutas puedes manejar más de 200 clientes activos. RoutePro centraliza pedidos, crédito y cobros en tiempo real — sin hojas de papel, sin llamadas para rastrear quién debe.',
     productos: [
       { id: 'P1', icono: '🥤', nombre: 'Refresco 600ml', precio: 2000, unidad: 'pza' },
       { id: 'P2', icono: '💦', nombre: 'Agua 500ml', precio: 1000, unidad: 'pza' },

@@ -381,8 +381,33 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                 </button>
               </div>
 
+              {/* Worker links — share with team */}
+              <div className="space-y-2 pt-1">
+                <p className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-widest text-center font-bold">Compartir con tu equipo</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.origin + '/?mode=repartidor');
+                      triggerToast('✓ Link de Repartidor copiado');
+                    }}
+                    className="flex-1 py-2.5 text-[10px] font-bold text-[#4A8FFF] bg-[#4A8FFF]/8 border border-[#4A8FFF]/15 rounded-xl hover:bg-[#4A8FFF]/12 cursor-pointer transition-all"
+                  >
+                    📲 Link Repartidor
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.origin + '/?mode=mostrador');
+                      triggerToast('✓ Link de Mostrador copiado');
+                    }}
+                    className="flex-1 py-2.5 text-[10px] font-bold text-[#10B981] bg-[#10B981]/8 border border-[#10B981]/15 rounded-xl hover:bg-[#10B981]/12 cursor-pointer transition-all"
+                  >
+                    📲 Link Mostrador
+                  </button>
+                </div>
+              </div>
+
               {/* Reset/Edit manual buttons for complete user control */}
-              <div className="flex gap-3 justify-center pt-2 flex-wrap">
+              <div className="flex gap-3 justify-center pt-1 flex-wrap">
                 <button
                   onClick={() => onGo('configuracion')}
                   className="text-xs text-[#8A93A8] hover:text-[#EEF1F8] underline cursor-pointer transition-colors"
