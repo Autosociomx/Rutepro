@@ -56,6 +56,7 @@ export default function App() {
   });
   const [authReady, setAuthReady] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
@@ -99,10 +100,12 @@ export default function App() {
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
 
-  // UID del dueño: desde la URL para trabajadores, desde authUser para dueños
-  const ownerUid = isWorkerMode
-    ? (new URLSearchParams(window.location.search).get('uid') || '')
-    : (authUser?.uid || '');
+  // Demo: sin UID → todos los guards de Firestore lo bloquean (if !ownerUid return)
+  const ownerUid = isDemoMode
+    ? ''
+    : isWorkerMode
+      ? (new URLSearchParams(window.location.search).get('uid') || '')
+      : (authUser?.uid || '');
 
   // Real-time Firestore synchronization on mount for the corporate setup
   useEffect(() => {
@@ -206,11 +209,13 @@ export default function App() {
 
   const handleSaveConfig = async (newCfg: AppConfig) => {
     let cloudSaved = false;
-    try {
-      await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), newCfg);
-      cloudSaved = true;
-    } catch (e) {
-      console.warn('Silent fallback activated. Firestore save failed, using local offline persistence:', e);
+    if (ownerUid) {
+      try {
+        await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), newCfg);
+        cloudSaved = true;
+      } catch (e) {
+        console.warn('Silent fallback activated. Firestore save failed, using local offline persistence:', e);
+      }
     }
 
     try {
@@ -219,7 +224,9 @@ export default function App() {
       if (newCfg.color_principal) {
         applyThemeColor(newCfg.color_principal);
       }
-      if (cloudSaved) {
+      if (isDemoMode) {
+        triggerToast('✓ Configuración guardada (solo en este dispositivo — modo demo)');
+      } else if (cloudSaved) {
         triggerToast('✓ Configuración guardada en la nube');
       } else {
         triggerToast('✓ Configuración guardada localmente (Modo sin conexión)', 'ok');
@@ -248,11 +255,13 @@ export default function App() {
     };
 
     let cloudSaved = false;
-    try {
-      await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), demoConfig);
-      cloudSaved = true;
-    } catch (e) {
-      console.warn('Silent database write failed, running demo in high-res offline cache mode:', e);
+    if (ownerUid) {
+      try {
+        await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), demoConfig);
+        cloudSaved = true;
+      } catch (e) {
+        console.warn('Silent database write failed, running demo in high-res offline cache mode:', e);
+      }
     }
 
     try {
@@ -387,15 +396,24 @@ export default function App() {
       
       setCfg(nextCfg);
       applyThemeColor(nextCfg.color_principal || '#C9912A');
-      setShowWelcome(true);
       setCurrentScreen('landing');
-      triggerToast('Sesión de demo finalizada, normalidad restaurada');
 
-      // 3. Silently try to reset the shared database configuration layout
-      try {
-        await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), nextCfg);
-      } catch (dbErr) {
-        console.log('[Info] Configuración remota persistida por otros usuarios del sandbox.', dbErr);
+      if (isDemoMode) {
+        // En demo: volver a la pantalla de registro
+        setIsDemoMode(false);
+        setShowWelcome(false);
+        triggerToast('Demo finalizada — crea tu cuenta para guardar datos reales');
+      } else {
+        setShowWelcome(true);
+        triggerToast('Sesión finalizada correctamente');
+        // Reiniciar configuración en la nube
+        if (ownerUid) {
+          try {
+            await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), nextCfg);
+          } catch (dbErr) {
+            console.log('[Info] Configuración remota no actualizada.', dbErr);
+          }
+        }
       }
     } catch (err) {
       console.error(err);
@@ -409,8 +427,12 @@ export default function App() {
     </div>
   );
 
-  if (!authUser && !isWorkerMode) return (
-    <AuthScreen onSuccess={() => {}} triggerToast={triggerToast} />
+  if (!authUser && !isWorkerMode && !isDemoMode) return (
+    <AuthScreen
+      onSuccess={() => {}}
+      onDemoMode={() => { setIsDemoMode(true); setShowWelcome(true); }}
+      triggerToast={triggerToast}
+    />
   );
 
   return (
@@ -424,6 +446,8 @@ export default function App() {
           onSaveConfig={handleSaveConfig}
           triggerToast={triggerToast}
           ownerUid={ownerUid}
+          isDemoMode={isDemoMode}
+          onRegistrarse={() => { setIsDemoMode(false); setShowWelcome(false); }}
         />
       )}
 

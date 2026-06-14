@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import {
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signInAnonymously
+  signInWithEmailAndPassword
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
 interface AuthScreenProps {
   onSuccess: () => void;
+  onDemoMode: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, triggerToast }) => {
   const [tab, setTab] = useState<'register' | 'login'>('register');
   const [loading, setLoading] = useState(false);
 
@@ -88,16 +88,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast 
     }
   };
 
-  const handleGuest = async () => {
-    setLoading(true);
-    try {
-      await signInAnonymously(auth);
-      onSuccess();
-    } catch (err) {
-      onSuccess(); // offline fallback
-    } finally {
-      setLoading(false);
-    }
+  const handleGuest = () => {
+    onDemoMode();
   };
 
   const mapFirebaseError = (code: string): string => {
@@ -302,16 +294,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast 
           )}
         </div>
 
-        {/* Guest access footer */}
+        {/* Demo footer — sin Firebase */}
         <div className="px-6 pb-5 text-center">
-          <div className="border-t border-white/5 pt-4">
+          <div className="border-t border-white/5 pt-4 space-y-1">
             <button
               onClick={handleGuest}
-              disabled={loading}
-              className="text-[10px] text-[#3E4A60] hover:text-[#8A93A8] transition-colors cursor-pointer disabled:opacity-40 underline underline-offset-2"
+              className="text-[10px] text-[#3E4A60] hover:text-[#8A93A8] transition-colors cursor-pointer underline underline-offset-2"
             >
-              Continuar sin cuenta (modo demo)
+              Explorar demo interactiva (sin guardar datos)
             </button>
+            <p className="text-[9px] text-[#1E2535]">Los datos del demo no se sincronizan ni almacenan.</p>
           </div>
         </div>
       </div>

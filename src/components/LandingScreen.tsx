@@ -17,6 +17,8 @@ interface LandingScreenProps {
   onSaveConfig: (newCfg: AppConfig) => Promise<void>;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
   ownerUid: string;
+  isDemoMode?: boolean;
+  onRegistrarse?: () => void;
 }
 
 export const LandingScreen: React.FC<LandingScreenProps> = ({
@@ -26,7 +28,9 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
   onNuevaDemo,
   onSaveConfig,
   triggerToast,
-  ownerUid
+  ownerUid,
+  isDemoMode,
+  onRegistrarse
 }) => {
   const hasSetup = cfg && cfg.productos && cfg.productos.length > 0;
 
@@ -260,7 +264,22 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
       />
       <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full bg-radial from-[rgba(201,145,42,0.03)] to-transparent pointer-events-none" />
 
-      <div className="relative z-10 max-w-md w-full flex flex-col items-center">
+      {/* Banner de modo demo */}
+      {isDemoMode && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between gap-3">
+          <p className="text-[10px] text-amber-300 font-bold">
+            🧪 Modo Demo — los datos no se guardan en ningún servidor
+          </p>
+          <button
+            onClick={onRegistrarse}
+            className="text-[10px] font-extrabold text-[#0B0E14] bg-amber-400 hover:bg-amber-300 px-3 py-1 rounded-lg cursor-pointer transition-all whitespace-nowrap"
+          >
+            Crear cuenta real →
+          </button>
+        </div>
+      )}
+
+      <div className="relative z-10 max-w-md w-full flex flex-col items-center" style={{ paddingTop: isDemoMode ? '44px' : '0' }}>
         {/* Animated App Logo Wrapper (Secret gateway to Owner Console) */}
         <button 
           type="button"
@@ -383,8 +402,18 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                 </button>
               </div>
 
-              {/* Worker links — share with team */}
-              <div className="space-y-2 pt-1">
+              {/* Worker links — solo disponibles para cuentas registradas */}
+              {isDemoMode && (
+                <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl px-3 py-2.5 text-center">
+                  <p className="text-[10px] text-amber-300/70 leading-relaxed">
+                    Crea tu cuenta para generar los links de tu equipo con UID único.
+                  </p>
+                  <button onClick={onRegistrarse} className="mt-1.5 text-[10px] font-bold text-amber-400 underline underline-offset-2 cursor-pointer">
+                    Registrarme gratis →
+                  </button>
+                </div>
+              )}
+              {!isDemoMode && <div className="space-y-2 pt-1">
                 <p className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-widest text-center font-bold">Compartir con tu equipo</p>
                 <div className="flex gap-2">
                   <button
@@ -406,7 +435,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                     📲 Link Mostrador
                   </button>
                 </div>
-              </div>
+              </div>}
 
               {/* Reset/Edit manual buttons for complete user control */}
               <div className="flex gap-3 justify-center pt-1 flex-wrap">
