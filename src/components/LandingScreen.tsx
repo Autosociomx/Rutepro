@@ -16,6 +16,7 @@ interface LandingScreenProps {
   onNuevaDemo: () => void;
   onSaveConfig: (newCfg: AppConfig) => Promise<void>;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
+  ownerUid: string;
 }
 
 export const LandingScreen: React.FC<LandingScreenProps> = ({
@@ -24,7 +25,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
   onCerrarSesion,
   onNuevaDemo,
   onSaveConfig,
-  triggerToast
+  triggerToast,
+  ownerUid
 }) => {
   const hasSetup = cfg && cfg.productos && cfg.productos.length > 0;
 
@@ -387,7 +389,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(window.location.origin + '/?mode=repartidor');
+                      navigator.clipboard.writeText(window.location.origin + '/?mode=repartidor&uid=' + ownerUid);
                       triggerToast('✓ Link de Repartidor copiado');
                     }}
                     className="flex-1 py-2.5 text-[10px] font-bold text-[#4A8FFF] bg-[#4A8FFF]/8 border border-[#4A8FFF]/15 rounded-xl hover:bg-[#4A8FFF]/12 cursor-pointer transition-all"
@@ -396,7 +398,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                   </button>
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(window.location.origin + '/?mode=mostrador');
+                      navigator.clipboard.writeText(window.location.origin + '/?mode=mostrador&uid=' + ownerUid);
                       triggerToast('✓ Link de Mostrador copiado');
                     }}
                     className="flex-1 py-2.5 text-[10px] font-bold text-[#10B981] bg-[#10B981]/8 border border-[#10B981]/15 rounded-xl hover:bg-[#10B981]/12 cursor-pointer transition-all"

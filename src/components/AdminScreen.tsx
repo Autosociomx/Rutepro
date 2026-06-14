@@ -10,9 +10,10 @@ interface AdminScreenProps {
   onGoConfig?: () => void;
   onCerrarSesion?: () => void;
   ownerEmail?: string;
+  ownerUid: string;
 }
 
-export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion, ownerEmail }) => {
+export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion, ownerEmail, ownerUid }) => {
   // Navigation & Tabs consolidated under Administrative Settings Gear, while main screen is AI Chat Dashboard!
   const [showConfigMenu, setShowConfigMenu] = useState(false);
   const [ventas, setVentas] = useState<Venta[]>([]);
@@ -247,7 +248,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 1. Subscribe to Sales Collection in real-time
   useEffect(() => {
-    const q = query(collection(db, 'ventas'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'negocios', ownerUid, 'ventas'), orderBy('timestamp', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const salesFromDb: Venta[] = [];
       snapshot.forEach((docSnap) => {
@@ -312,7 +313,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 2. Subscribe to Mermas (Devoluciones)
   useEffect(() => {
-    const q = query(collection(db, 'devoluciones'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'negocios', ownerUid, 'devoluciones'), orderBy('timestamp', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const devolsFromDb: Devolucion[] = [];
       snapshot.forEach((docSnap) => {
@@ -362,7 +363,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 3. Subscribe to Mystery Audits
   useEffect(() => {
-    const q = query(collection(db, 'mystery_audits'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'negocios', ownerUid, 'mystery_audits'), orderBy('timestamp', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const auditsFromDb: MysteryAudit[] = [];
       snapshot.forEach((docSnap) => {
@@ -392,7 +393,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 4. Subscribe to Payments (Abonos) Sincronizados
   useEffect(() => {
-    const q = query(collection(db, 'abonos'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'negocios', ownerUid, 'abonos'), orderBy('timestamp', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const paymentsList: Abono[] = [];
       snapshot.forEach((docSnap) => {
@@ -419,7 +420,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 5. Subscribe to Master Clients Collection
   useEffect(() => {
-    const q = query(collection(db, 'clientes'));
+    const q = query(collection(db, 'negocios', ownerUid, 'clientes'));
     const unsub = onSnapshot(q, (snapshot) => {
       const clientsList: Client[] = [];
       snapshot.forEach((docSnap) => {
@@ -631,23 +632,23 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       setMysteryAudits([]);
       setAbonos([]);
 
-      const vSnap = await getDocs(query(collection(db, 'ventas')));
-      const dSnap = await getDocs(query(collection(db, 'devoluciones')));
-      const mSnap = await getDocs(query(collection(db, 'mystery_audits')));
-      const abSnap = await getDocs(query(collection(db, 'abonos')));
+      const vSnap = await getDocs(query(collection(db, 'negocios', ownerUid, 'ventas')));
+      const dSnap = await getDocs(query(collection(db, 'negocios', ownerUid, 'devoluciones')));
+      const mSnap = await getDocs(query(collection(db, 'negocios', ownerUid, 'mystery_audits')));
+      const abSnap = await getDocs(query(collection(db, 'negocios', ownerUid, 'abonos')));
 
       const batch = writeBatch(db);
       vSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'ventas', docSnap.id));
+        batch.delete(doc(db, 'negocios', ownerUid, 'ventas', docSnap.id));
       });
       dSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'devoluciones', docSnap.id));
+        batch.delete(doc(db, 'negocios', ownerUid, 'devoluciones', docSnap.id));
       });
       mSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'mystery_audits', docSnap.id));
+        batch.delete(doc(db, 'negocios', ownerUid, 'mystery_audits', docSnap.id));
       });
       abSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'abonos', docSnap.id));
+        batch.delete(doc(db, 'negocios', ownerUid, 'abonos', docSnap.id));
       });
 
       await batch.commit();
@@ -692,7 +693,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     };
 
     try {
-      await setDoc(doc(db, 'abonos', abonoId), abonoObj);
+      await setDoc(doc(db, 'negocios', ownerUid, 'abonos', abonoId), abonoObj);
       
       // Update local storage payment lists immediately to avoid stale interface
       const prevAbonos = JSON.parse(localStorage.getItem('rp_abonos') || '[]');
@@ -760,7 +761,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     };
 
     try {
-      await setDoc(doc(db, 'mystery_audits', auditId), auditObj);
+      await setDoc(doc(db, 'negocios', ownerUid, 'mystery_audits', auditId), auditObj);
       const prev = JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]');
       localStorage.setItem('rp_mystery_audits', JSON.stringify([auditObj, ...prev]));
       

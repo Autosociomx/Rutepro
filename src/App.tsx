@@ -99,9 +99,15 @@ export default function App() {
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
 
+  // UID del dueño: desde la URL para trabajadores, desde authUser para dueños
+  const ownerUid = isWorkerMode
+    ? (new URLSearchParams(window.location.search).get('uid') || '')
+    : (authUser?.uid || '');
+
   // Real-time Firestore synchronization on mount for the corporate setup
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'config', 'global'), (docSnap) => {
+    if (!ownerUid) return;
+    const unsub = onSnapshot(doc(db, 'negocios', ownerUid, 'config', 'global'), (docSnap) => {
       if (docSnap.exists()) {
         const cloudData = docSnap.data() as any;
         setCfg(cloudData);
@@ -140,7 +146,7 @@ export default function App() {
             ],
             logo_url: ''
           };
-          setDoc(doc(db, 'config', 'global'), defaultNayaritas)
+          setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), defaultNayaritas)
             .then(() => console.log('Successfully auto-seeded blank database with Tostadas Nayaritas'))
             .catch(e => console.warn('Could not auto-seed cloud config:', e));
           localStorage.setItem('rp_cfg', JSON.stringify(defaultNayaritas));
@@ -153,7 +159,7 @@ export default function App() {
     });
 
     return () => unsub();
-  }, []);
+  }, [ownerUid]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -168,12 +174,14 @@ export default function App() {
 
   // Setup real-time background sync engine for offline operations
   useEffect(() => {
+    if (!ownerUid) return;
+
     // 1. Initial sync attempts
-    syncLocalTransactions().catch(e => console.warn('Offline sync background error:', e));
+    syncLocalTransactions(ownerUid).catch(e => console.warn('Offline sync background error:', e));
 
     // 2. Sync whenever browser network state changes to online
     const handleOnline = () => {
-      syncLocalTransactions().then((res) => {
+      syncLocalTransactions(ownerUid).then((res) => {
         if (res.ventasSincronizadas > 0 || res.devolucionesSincronizadas > 0) {
           triggerToast(`✓ ¡Conexión restablecida! Sincronizados: ${res.ventasSincronizadas} ventas y ${res.devolucionesSincronizadas} devoluciones.`);
         }
@@ -183,7 +191,7 @@ export default function App() {
 
     // 3. Periodic execution of syncing queue (every 12 seconds)
     const interval = setInterval(() => {
-      syncLocalTransactions().then((res) => {
+      syncLocalTransactions(ownerUid).then((res) => {
         if (res.ventasSincronizadas > 0 || res.devolucionesSincronizadas > 0) {
           triggerToast(`✓ Sincronización automática: ${res.ventasSincronizadas} ventas y ${res.devolucionesSincronizadas} mermas subidas.`);
         }
@@ -194,12 +202,12 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
       clearInterval(interval);
     };
-  }, []);
+  }, [ownerUid]);
 
   const handleSaveConfig = async (newCfg: AppConfig) => {
     let cloudSaved = false;
     try {
-      await setDoc(doc(db, 'config', 'global'), newCfg);
+      await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), newCfg);
       cloudSaved = true;
     } catch (e) {
       console.warn('Silent fallback activated. Firestore save failed, using local offline persistence:', e);
@@ -241,7 +249,7 @@ export default function App() {
 
     let cloudSaved = false;
     try {
-      await setDoc(doc(db, 'config', 'global'), demoConfig);
+      await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), demoConfig);
       cloudSaved = true;
     } catch (e) {
       console.warn('Silent database write failed, running demo in high-res offline cache mode:', e);
@@ -385,7 +393,7 @@ export default function App() {
 
       // 3. Silently try to reset the shared database configuration layout
       try {
-        await setDoc(doc(db, 'config', 'global'), nextCfg);
+        await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), nextCfg);
       } catch (dbErr) {
         console.log('[Info] Configuración remota persistida por otros usuarios del sandbox.', dbErr);
       }
@@ -415,6 +423,7 @@ export default function App() {
           onNuevaDemo={handleNuevaDemo}
           onSaveConfig={handleSaveConfig}
           triggerToast={triggerToast}
+          ownerUid={ownerUid}
         />
       )}
 
@@ -432,6 +441,7 @@ export default function App() {
           onGoBack={() => setCurrentScreen('landing')}
           triggerToast={triggerToast}
           isWorkerMode={isWorkerMode}
+          ownerUid={ownerUid}
         />
       )}
 
@@ -441,6 +451,7 @@ export default function App() {
           onGoBack={() => setCurrentScreen('landing')}
           triggerToast={triggerToast}
           isWorkerMode={isWorkerMode}
+          ownerUid={ownerUid}
         />
       )}
 
@@ -452,6 +463,7 @@ export default function App() {
           onGoConfig={() => setCurrentScreen('configuracion')}
           onCerrarSesion={handleCerrarSesion}
           ownerEmail={authUser?.email ?? undefined}
+          ownerUid={ownerUid}
         />
       )}
 
