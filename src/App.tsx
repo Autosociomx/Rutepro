@@ -317,9 +317,19 @@ export default function App() {
     });
   };
 
+  const handleNuevaDemo = () => {
+    localStorage.removeItem('rp_welcome_seen');
+    localStorage.removeItem('rp_cfg');
+    localStorage.removeItem('rp_ventas');
+    localStorage.removeItem('rp_devoluciones');
+    setCfg({ nombre: '', letra: '', subtitulo: 'App del vendedor · RoutePro', color_principal: '#C9912A', productos: [], vendedores: [] });
+    setShowWelcome(true);
+  };
+
   const handleCerrarSesion = async () => {
     try {
       // 1. Wipe demo cache
+      localStorage.removeItem('rp_welcome_seen');
       localStorage.removeItem('rp_cfg');
       localStorage.removeItem('rp_ventas');
       localStorage.removeItem('rp_devoluciones');
@@ -355,6 +365,7 @@ export default function App() {
       
       setCfg(nextCfg);
       applyThemeColor(nextCfg.color_principal || '#C9912A');
+      setShowWelcome(true);
       setCurrentScreen('landing');
       triggerToast('Sesión de demo finalizada, normalidad restaurada');
 
@@ -373,10 +384,11 @@ export default function App() {
   return (
     <div className="bg-[#06080C] min-h-screen">
       {currentScreen === 'landing' && (
-        <LandingScreen 
-          cfg={cfg} 
-          onGo={(screen: any) => setCurrentScreen(screen)} 
+        <LandingScreen
+          cfg={cfg}
+          onGo={(screen: any) => setCurrentScreen(screen)}
           onCerrarSesion={handleCerrarSesion}
+          onNuevaDemo={handleNuevaDemo}
           onSaveConfig={handleSaveConfig}
           triggerToast={triggerToast}
         />
