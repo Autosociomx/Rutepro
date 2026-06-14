@@ -22,6 +22,12 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/send-report"
+  to = "/.netlify/functions/send-report"
+  status = 200
+  force = true
+
 # SPA catch-all — serves index.html for all other routes
 [[redirects]]
   from = "/*"

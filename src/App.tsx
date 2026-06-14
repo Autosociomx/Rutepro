@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType, auth } from './firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
 import { syncLocalTransactions } from './utils/syncEngine';
@@ -15,6 +15,7 @@ import { RepartidorScreen } from './components/RepartidorScreen';
 import { MostradorScreen } from './components/MostradorScreen';
 import { AdminScreen } from './components/AdminScreen';
 import { WelcomeModal } from './components/WelcomeModal';
+import { AuthScreen } from './components/AuthScreen';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>(() => {
@@ -53,6 +54,8 @@ export default function App() {
     if (m === 'repartidor' || m === 'mostrador') return false;
     return !localStorage.getItem('rp_welcome_seen');
   });
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
@@ -152,15 +155,15 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Perform Firebase Anonymous sign-in on boot to secure writes in Firestore
   useEffect(() => {
-    signInAnonymously(auth)
-      .then((userCred) => {
-        console.log('Signed in anonymously as:', userCred.user.uid);
-      })
-      .catch((err) => {
-        console.warn('Anonymous sign-in failed or resumed:', err);
-      });
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      setAuthReady(true);
+      if (!user && isWorkerMode) {
+        signInAnonymously(auth).catch(() => {});
+      }
+    });
+    return unsub;
   }, []);
 
   // Setup real-time background sync engine for offline operations
@@ -392,6 +395,16 @@ export default function App() {
     }
   };
 
+  if (!authReady) return (
+    <div className="min-h-screen bg-[#06080C] flex items-center justify-center">
+      <div className="text-amber-400 animate-pulse text-sm font-bold">Cargando...</div>
+    </div>
+  );
+
+  if (!authUser && !isWorkerMode) return (
+    <AuthScreen onSuccess={() => {}} triggerToast={triggerToast} />
+  );
+
   return (
     <div className="bg-[#06080C] min-h-screen">
       {currentScreen === 'landing' && (
@@ -432,12 +445,13 @@ export default function App() {
       )}
 
       {currentScreen === 'admin' && (
-        <AdminScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
+        <AdminScreen
+          cfg={cfg}
+          onGoBack={() => setCurrentScreen('landing')}
           triggerToast={triggerToast}
           onGoConfig={() => setCurrentScreen('configuracion')}
           onCerrarSesion={handleCerrarSesion}
+          ownerEmail={authUser?.email ?? undefined}
         />
       )}
 

@@ -9,9 +9,10 @@ interface AdminScreenProps {
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
   onGoConfig?: () => void;
   onCerrarSesion?: () => void;
+  ownerEmail?: string;
 }
 
-export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion }) => {
+export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion, ownerEmail }) => {
   // Navigation & Tabs consolidated under Administrative Settings Gear, while main screen is AI Chat Dashboard!
   const [showConfigMenu, setShowConfigMenu] = useState(false);
   const [ventas, setVentas] = useState<Venta[]>([]);
@@ -43,6 +44,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // Administrative control states
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [isSendingReport, setIsSendingReport] = useState(false);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
 
@@ -536,6 +538,52 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   const topProducts = getProductPopularity();
   const maxProductRevenue = topProducts.length > 0 ? topProducts[0].totalCents : 1;
 
+  const handleSendReport = async () => {
+    if (!ownerEmail) {
+      triggerToast('Inicia sesión con email para recibir reportes por correo', 'err');
+      return;
+    }
+    setIsSendingReport(true);
+    try {
+      const today = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const efectivo = ventas.filter(v => v.tipoCobro === 'efectivo').reduce((s, v) => s + (v.monto || 0), 0);
+      const credito = ventas.filter(v => v.tipoCobro === 'crédito').reduce((s, v) => s + (v.monto || 0), 0);
+      const mermas = devoluciones.reduce((s, d) => s + (d.monto || 0), 0);
+      const byVendedor: Record<string, { nombre: string; total: number }> = {};
+      ventas.forEach(v => {
+        if (!byVendedor[v.vendedorId]) byVendedor[v.vendedorId] = { nombre: v.vendedorNombre || v.vendedorId, total: 0 };
+        byVendedor[v.vendedorId].total += v.monto || 0;
+      });
+      const topVendedor = Object.values(byVendedor).sort((a, b) => b.total - a.total)[0]?.nombre || '—';
+      const res = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: ownerEmail,
+          negocio: cfg.nombre,
+          fecha: today,
+          totalVentas: totalCobrado,
+          efectivo,
+          credito,
+          mermas,
+          topVendedor,
+          cuentasPorCobrar: totalClientsWithDebtCount,
+          totalDeuda: totalPendingBalanceCents,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        triggerToast(`✓ Resumen enviado a ${ownerEmail}`);
+      } else {
+        triggerToast(data.error || 'Error al enviar el reporte', 'err');
+      }
+    } catch {
+      triggerToast('Error de conexión al enviar el reporte', 'err');
+    } finally {
+      setIsSendingReport(false);
+    }
+  };
+
   // AI execution routine sending context questions
   const handleAskAI = async (textOver?: string) => {
     const qStr = textOver || chatInp.trim();
@@ -829,7 +877,17 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             >
               🛠️ Cambiar Catálogo / Precios
             </button>
-            <button 
+            <button
+              onClick={() => {
+                setShowConfigMenu(false);
+                handleSendReport();
+              }}
+              disabled={isSendingReport}
+              className="p-3 bg-[#111520] border border-amber-500/20 rounded-xl hover:bg-[#181D2B] text-left text-xs text-amber-300 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isSendingReport ? '⏳ Enviando...' : '📧 Resumen por Correo'}
+            </button>
+            <button
               onClick={() => {
                 setShowConfigMenu(false);
                 setShowWipeConfirm(true);
