@@ -23,7 +23,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   const [dbClientes, setDbClientes] = useState<Client[]>([]);
 
   // Detailed modal cards state
-  const [selectedCardDetails, setSelectedCardDetails] = useState<'ventas' | 'clientes' | 'saldo' | 'rutas' | null>(null);
+  const [selectedCardDetails, setSelectedCardDetails] = useState<'ventas' | 'clientes' | 'saldo' | 'rutas' | 'mystery' | null>(null);
   
   // Structured Route / Clients Sequence Map Tracking
   const [clientSubTab, setClientSubTab] = useState<'rutas' | 'cartera' | 'metas'>('rutas');
@@ -857,13 +857,10 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             >
               🚚 Flotilla y Rutas
             </button>
-            <button 
+            <button
               onClick={() => {
                 setShowConfigMenu(false);
-                if (cfg.vendedores.length > 0) {
-                  setMSelectedSellerId(cfg.vendedores[0].id);
-                }
-                setShowMysteryModal(true);
+                setSelectedCardDetails('mystery');
               }}
               className="p-3 bg-[#111520] border border-white/5 rounded-xl hover:bg-[#181D2B] text-left text-xs text-amber-300 cursor-pointer transition-all"
             >
@@ -1108,6 +1105,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                   {selectedCardDetails === 'ventas' && '📊 Reporte de Ventas de Hoy'}
                   {selectedCardDetails === 'saldo' && '💵 Cartera "El Fiado" y Saldos Pendientes'}
                   {selectedCardDetails === 'rutas' && '🚚 Rutas del Día, Mapas y Clientes'}
+                  {selectedCardDetails === 'mystery' && '🕵️‍♂️ Auditorías de Cliente Misterioso'}
                 </h3>
               </div>
               <button 
@@ -1826,6 +1824,125 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                       </div>
                     );
                   })()}
+
+                </div>
+              )}
+
+              {/* DETAILS E: MYSTERY AUDIT HISTORY */}
+              {selectedCardDetails === 'mystery' && (
+                <div className="space-y-4">
+
+                  {/* Header row with new audit button */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[9px] font-mono text-amber-500/60 uppercase tracking-widest font-bold">Inspección Encubierta</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {mysteryAudits.length === 0 ? 'Sin auditorías registradas' : `${mysteryAudits.length} auditoría${mysteryAudits.length !== 1 ? 's' : ''} en total`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (cfg.vendedores.length > 0) setMSelectedSellerId(cfg.vendedores[0].id);
+                        setMCheckCobro(true);
+                        setMCheckRecibo(true);
+                        setMCheckPresentacion(true);
+                        setMCheckTrato(true);
+                        setMNotas('');
+                        setShowMysteryModal(true);
+                      }}
+                      className="shrink-0 px-3 py-2 text-[10px] font-extrabold rounded-xl cursor-pointer text-slate-950 transition-all"
+                      style={{ backgroundColor: cfg.color_principal }}
+                    >
+                      + Nueva
+                    </button>
+                  </div>
+
+                  {/* Summary stats per seller */}
+                  {mysteryAudits.length > 0 && (() => {
+                    const statsBySeller: Record<string, { nombre: string; total: number; sumScore: number }> = {};
+                    mysteryAudits.forEach(a => {
+                      if (!statsBySeller[a.vendedorId]) {
+                        statsBySeller[a.vendedorId] = { nombre: a.vendedorNombre, total: 0, sumScore: 0 };
+                      }
+                      statsBySeller[a.vendedorId].total += 1;
+                      statsBySeller[a.vendedorId].sumScore += a.calificacion;
+                    });
+                    return (
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(statsBySeller).map(([id, s]) => {
+                          const avg = Math.round(s.sumScore / s.total);
+                          const color = avg >= 80 ? '#10B981' : avg >= 50 ? '#F59E0B' : '#EF4444';
+                          return (
+                            <div key={id} className="bg-[#0C101A] border border-white/5 rounded-xl p-3 space-y-1">
+                              <p className="text-[10px] font-bold text-white truncate">{s.nombre.split(' ')[0]}</p>
+                              <div className="flex items-end gap-1.5">
+                                <span className="text-xl font-extrabold" style={{ color }}>{avg}%</span>
+                                <span className="text-[9px] text-gray-500 mb-0.5">{s.total} visita{s.total !== 1 ? 's' : ''}</span>
+                              </div>
+                              <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${avg}%`, backgroundColor: color }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Audit list */}
+                  {mysteryAudits.length === 0 ? (
+                    <div className="text-center py-10 space-y-2">
+                      <div className="text-3xl">🕵️‍♂️</div>
+                      <p className="text-xs text-gray-500">Aún no hay auditorías registradas.</p>
+                      <p className="text-[10px] text-gray-600">Presiona "+ Nueva" para crear la primera.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {mysteryAudits.map((a) => {
+                        const scoreColor = a.calificacion >= 80 ? 'text-emerald-400' : a.calificacion >= 50 ? 'text-amber-400' : 'text-red-400';
+                        const scoreBorder = a.calificacion >= 80 ? 'border-emerald-500/20' : a.calificacion >= 50 ? 'border-amber-500/20' : 'border-red-500/20';
+                        const scoreBg = a.calificacion >= 80 ? 'bg-emerald-500/5' : a.calificacion >= 50 ? 'bg-amber-500/5' : 'bg-red-500/5';
+                        const checks = [
+                          { label: 'Cobro', ok: a.checks.cobroExacto },
+                          { label: 'Recibo', ok: a.checks.entregaRecibo },
+                          { label: 'Presentación', ok: a.checks.presentacionLimpia },
+                          { label: 'Trato', ok: a.checks.tratoAmable },
+                        ];
+                        return (
+                          <div key={a.id} className={`border ${scoreBorder} ${scoreBg} rounded-xl p-3.5 space-y-2.5`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-bold text-white">{a.vendedorNombre}</p>
+                                <p className="text-[9px] text-gray-500">
+                                  Auditor: {a.auditor} · {new Date(a.timestamp).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
+                              </div>
+                              <span className={`text-2xl font-extrabold font-display shrink-0 ${scoreColor}`}>
+                                {a.calificacion}%
+                              </span>
+                            </div>
+
+                            <div className="flex gap-1.5 flex-wrap">
+                              {checks.map(c => (
+                                <span
+                                  key={c.label}
+                                  className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md border ${c.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}
+                                >
+                                  {c.ok ? '✓' : '✗'} {c.label}
+                                </span>
+                              ))}
+                            </div>
+
+                            {a.notas && (
+                              <p className="text-[10px] text-gray-400 italic border-t border-white/5 pt-2">
+                                "{a.notas}"
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                 </div>
               )}
