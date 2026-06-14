@@ -19,9 +19,10 @@ interface RepartidorScreenProps {
   cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
+  isWorkerMode?: boolean;
 }
 
-export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
+export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast, isWorkerMode }) => {
   const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
   const [activeTab, setActiveTab] = useState<'ped' | 'cli' | 'cierr' | 'ia'>('ped');
   const [horaIni, setHoraIni] = useState<Date | null>(null);
@@ -485,9 +486,11 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     return (
       <div className="min-h-screen bg-[#06080C] text-[#EEF1F8] flex flex-col font-sans">
         <div className="sticky top-0 z-50 h-14 bg-[#06080C]/94 backdrop-blur-md border-b border-white/5 px-4.5 flex items-center gap-3">
-          <button onClick={onGoBack} className="w-9 h-9 rounded-lg bg-[#111520] border border-white/5 flex items-center justify-center text-[#8A93A8] hover:text-[#EEF1F8] cursor-pointer">
-            ←
-          </button>
+          {!isWorkerMode && (
+            <button onClick={onGoBack} className="w-9 h-9 rounded-lg bg-[#111520] border border-white/5 flex items-center justify-center text-[#8A93A8] hover:text-[#EEF1F8] cursor-pointer">
+              ←
+            </button>
+          )}
           <div className="text-left font-display font-bold text-sm tracking-wide">Iniciar Jornada</div>
         </div>
         <div className="flex-1 p-5 overflow-y-auto">

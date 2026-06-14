@@ -17,7 +17,14 @@ import { AdminScreen } from './components/AdminScreen';
 import { WelcomeModal } from './components/WelcomeModal';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('landing');
+  const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>(() => {
+    const m = new URLSearchParams(window.location.search).get('mode');
+    return (m === 'repartidor' || m === 'mostrador') ? m : 'landing';
+  });
+  const isWorkerMode = (() => {
+    const m = new URLSearchParams(window.location.search).get('mode');
+    return m === 'repartidor' || m === 'mostrador';
+  })();
   const [cfg, setCfg] = useState<AppConfig>({
     nombre: 'Tostadas Nayaritas',
     letra: 'TN',
@@ -41,7 +48,11 @@ export default function App() {
 
   const [demoSel, setDemoSel] = useState<DemoConfig | null>(null);
   const [demoNameInput, setDemoNameInput] = useState('');
-  const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem('rp_welcome_seen'));
+  const [showWelcome, setShowWelcome] = useState(() => {
+    const m = new URLSearchParams(window.location.search).get('mode');
+    if (m === 'repartidor' || m === 'mostrador') return false;
+    return !localStorage.getItem('rp_welcome_seen');
+  });
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
@@ -403,18 +414,20 @@ export default function App() {
       )}
 
       {currentScreen === 'repartidor' && (
-        <RepartidorScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
+        <RepartidorScreen
+          cfg={cfg}
+          onGoBack={() => setCurrentScreen('landing')}
           triggerToast={triggerToast}
+          isWorkerMode={isWorkerMode}
         />
       )}
 
       {currentScreen === 'mostrador' && (
-        <MostradorScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
+        <MostradorScreen
+          cfg={cfg}
+          onGoBack={() => setCurrentScreen('landing')}
           triggerToast={triggerToast}
+          isWorkerMode={isWorkerMode}
         />
       )}
 

@@ -97,8 +97,8 @@ export function WelcomeModal({ onLaunchDemo, onDismiss }: WelcomeModalProps) {
           {step === 2 && (
             <>
               <div className="space-y-1">
-                <h3 className="font-bold text-white text-sm">¿Qué tipo de negocio tienes?</h3>
-                <p className="text-[10px] text-[#8A93A8]">Vamos a mostrarte exactamente dónde se está yendo tu dinero.</p>
+                <h3 className="font-bold text-white text-sm">¿Cuál se parece más al tuyo?</h3>
+                <p className="text-[10px] text-[#8A93A8]">Cada giro tiene sus propias fugas de dinero. Identificamos las tuyas en segundos.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-0.5">
@@ -130,7 +130,7 @@ export function WelcomeModal({ onLaunchDemo, onDismiss }: WelcomeModalProps) {
                   disabled={!selected}
                   className="flex-1 py-3 text-sm font-bold text-[#0B0E14] bg-amber-400 hover:brightness-105 rounded-xl cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Continuar →
+                  Este es mi negocio →
                 </button>
               </div>
             </>
@@ -141,8 +141,8 @@ export function WelcomeModal({ onLaunchDemo, onDismiss }: WelcomeModalProps) {
             <>
               <div className="text-center space-y-1">
                 <div className="text-3xl">{selected.icono}</div>
-                <h3 className="font-bold text-white text-sm">¿Cómo se llama tu negocio?</h3>
-                <p className="text-[10px] text-[#8A93A8]">Lo usamos en reportes, cobranza y tu diagnóstico de control.</p>
+                <h3 className="font-bold text-white text-sm">Un último dato y empezamos</h3>
+                <p className="text-[10px] text-[#8A93A8]">¿Cómo se llama tu negocio? Aparecerá en cada ticket y cobro de tu equipo.</p>
               </div>
 
               <input
@@ -166,10 +166,9 @@ export function WelcomeModal({ onLaunchDemo, onDismiss }: WelcomeModalProps) {
                 </button>
                 <button
                   onClick={handleLaunch}
-                  className="flex-1 py-3 text-sm font-bold text-[#0B0E14] rounded-xl cursor-pointer transition-all hover:brightness-105 shadow-lg"
-                  style={{ backgroundColor: selected.color }}
+                  className="flex-1 py-3 text-sm font-bold text-[#0B0E14] bg-amber-400 hover:brightness-105 rounded-xl cursor-pointer transition-all shadow-lg shadow-amber-500/20"
                 >
-                  Ver mi diagnóstico gratis →
+                  Activar mi diagnóstico →
                 </button>
               </div>
             </>
