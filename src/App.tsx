@@ -16,6 +16,14 @@ import { MostradorScreen } from './components/MostradorScreen';
 import { AdminScreen } from './components/AdminScreen';
 import { WelcomeModal } from './components/WelcomeModal';
 import { AuthScreen } from './components/AuthScreen';
+import { PaywallScreen } from './components/PaywallScreen';
+
+interface BillingInfo {
+  status: 'trial' | 'active' | 'expired';
+  trial_ends_at?: number;
+  days_remaining?: number;
+  owner_nombre?: string;
+}
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>(() => {
@@ -58,6 +66,8 @@ export default function App() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
+  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
+  const [billingLoading, setBillingLoading] = useState(true);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setErrorToast({ message: msg, type });
@@ -174,6 +184,53 @@ export default function App() {
     });
     return unsub;
   }, []);
+
+  // Billing / subscription gate — reads usuarios/{uid} for plan status
+  useEffect(() => {
+    if (isDemoMode || isWorkerMode) {
+      setBillingLoading(false);
+      return;
+    }
+    if (!authUser?.uid) {
+      setBillingLoading(false);
+      return;
+    }
+    const unsub = onSnapshot(doc(db, 'usuarios', authUser.uid), (snap) => {
+      if (!snap.exists()) {
+        setBillingInfo({ status: 'active' });
+        setBillingLoading(false);
+        return;
+      }
+      const d = snap.data() as any;
+      const trialEndsAt: number | undefined = d.trial_ends_at ?? d.billing?.trial_ends_at;
+      const planStatus: string = d.billing?.status ?? d.plan ?? 'trial';
+
+      let status: BillingInfo['status'];
+      if (planStatus === 'active') {
+        status = 'active';
+      } else if (!trialEndsAt) {
+        // Usuarios anteriores sin trial_ends_at → acceso completo (retrocompat)
+        status = 'active';
+      } else if (Date.now() > trialEndsAt) {
+        status = 'expired';
+      } else {
+        status = 'trial';
+      }
+
+      const daysRemaining = trialEndsAt
+        ? Math.max(0, Math.ceil((trialEndsAt - Date.now()) / (1000 * 60 * 60 * 24)))
+        : undefined;
+
+      setBillingInfo({
+        status,
+        trial_ends_at: trialEndsAt,
+        days_remaining: daysRemaining,
+        owner_nombre: d.nombre,
+      });
+      setBillingLoading(false);
+    });
+    return unsub;
+  }, [authUser?.uid, isDemoMode, isWorkerMode]);
 
   // Setup real-time background sync engine for offline operations
   useEffect(() => {
@@ -435,6 +492,32 @@ export default function App() {
     />
   );
 
+  // Esperar datos de suscripción antes de mostrar la app (evita parpadeos)
+  if (billingLoading && !isDemoMode && !isWorkerMode) return (
+    <div className="min-h-screen bg-[#06080C] flex items-center justify-center">
+      <div className="text-amber-400 animate-pulse text-sm font-bold">Cargando...</div>
+    </div>
+  );
+
+  // Paywall: trial expirado y sin plan activo
+  if (billingInfo?.status === 'expired' && !isDemoMode && !isWorkerMode) return (
+    <>
+      <PaywallScreen
+        ownerUid={ownerUid}
+        ownerEmail={authUser?.email ?? ''}
+        ownerNombre={billingInfo.owner_nombre}
+        trialEndedAt={billingInfo.trial_ends_at}
+        triggerToast={triggerToast}
+      />
+      {errorToast && (
+        <div className={`fixed bottom-6 left-5 right-5 p-3.5 rounded-xl z-50 shadow-md text-xs font-bold flex items-center gap-2 justify-center animate-fade-in ${errorToast.type === 'err' ? 'bg-red-950/80 border border-red-500/20 text-red-400' : 'bg-emerald-950/80 border border-emerald-500/20 text-[#00C896]'}`}>
+          <span>{errorToast.type === 'err' ? '⚠️' : '✓'}</span>
+          <span>{errorToast.message}</span>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="bg-[#06080C] min-h-screen">
       {currentScreen === 'landing' && (
@@ -568,6 +651,15 @@ export default function App() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* TRIAL BANNER */}
+      {billingInfo?.status === 'trial' && !isDemoMode && !isWorkerMode && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-[#06080C] text-center py-1.5 px-4 text-[10px] font-extrabold tracking-wide">
+          {billingInfo.days_remaining === 0
+            ? '⚠ Tu prueba vence hoy — activa tu plan para no perder acceso'
+            : `Prueba gratis: ${billingInfo.days_remaining} día${billingInfo.days_remaining !== 1 ? 's' : ''} restante${billingInfo.days_remaining !== 1 ? 's' : ''}`}
         </div>
       )}
 

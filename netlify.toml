@@ -28,6 +28,18 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/create-payment"
+  to = "/.netlify/functions/create-payment"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/conekta-webhook"
+  to = "/.netlify/functions/conekta-webhook"
+  status = 200
+  force = true
+
 # SPA catch-all — serves index.html for all other routes
 [[redirects]]
   from = "/*"

@@ -50,12 +50,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
       const uid = cred.user.uid;
       const now = Date.now();
 
+      const trialEndsAt = now + 14 * 24 * 60 * 60 * 1000; // 14 días
+
       await setDoc(doc(db, 'usuarios', uid), {
         uid,
         nombre: nombre.trim(),
         email: email.trim().toLowerCase(),
         telefono: telefono.trim(),
         plan: 'trial',
+        trial_ends_at: trialEndsAt,
+        billing: { status: 'trial', trial_ends_at: trialEndsAt },
         aviso_privacidad: true,
         aviso_privacidad_ts: now,
         created_at: now
