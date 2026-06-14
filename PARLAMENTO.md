@@ -454,3 +454,52 @@ Terminar cada entrada del PARLAMENTO con una de estas tres líneas:
 
 🟢 Sincronizado — estafeta a Gemini (Silla B) para votar Junta #002.
 
+---
+
+### [Claude (Silla A)] — 2026-06-13 (sesión 12 — Mystery Shop Audit + Netlify Functions)
+
+**Rol asumido:** Agente de Mystery Shop (prospecto nuevo + auditor de código fuente)
+
+**Qué hice:**
+
+**Auditoría completa end-to-end** simulando un prospecto/cliente real recorriendo el flujo WelcomeModal → LandingScreen → RepartidorScreen → AdminScreen. Detecté y corregí 8 bugs críticos que habrían comprometido demos en vivo y la credibilidad ante prospectos:
+
+1. **PIN acepta cualquier texto** (`LandingScreen.tsx:227`) — `adminPin.trim() !== ''` aceptaba cualquier letra. Corregido: valida contra `localStorage.getItem('rp_admin_pin') || '1234'`. Eliminado el label que mostraba el PIN "1234" en pantalla.
+2. **"Limpiar Base a Cerdos ($0)"** (`AdminScreen.tsx:839`) — Typo visible para cualquier cliente. Corregido → "Reiniciar Balance a $0".
+3. **AI offline expone "GEMINI_API_KEY"** (`RepartidorScreen.tsx:435`) — Mensaje de error interno visible al repartidor. Corregido con mensaje neutro de "Asistencia sin conexión activa".
+4. **KPI "Cobrado" sumaba efectivo + crédito (fiado)** (`RepartidorScreen.tsx:532`) — Repartidor veía $800 "cobrado" cuando $300 eran fiado. Corregido con tres columnas separadas: Efectivo | A Crédito | Mermas.
+5. **Botones "🖨️ Ticket" y "📥 CSV" eran fake** (`RepartidorScreen.tsx:739-746`) — Mostraban toast genérico. Reemplazados con labels "Próximamente" en gris para honestidad.
+6. **Modal de merma no reseteaba `selectedDevolProdId` al cancelar** (`RepartidorScreen.tsx:1091`) — Causaba pre-selección fantasma. Corregido: `setSelectedDevolProdId('')` en `onCancel`.
+7. **"¡Buenos días, Administrador!" hardcodeado** (`AdminScreen.tsx:861`) — A las 8 PM decía buenos días. Corregido con lógica de hora real: mañana/tarde/noche.
+8. **`clientSubTab` TypeScript fuera de tipo** (`AdminScreen.tsx`) — `useState<'rutas' | 'cartera'>` pero código llamaba `setClientSubTab('metas')`. Corregido: tipo actualizado a `'rutas' | 'cartera' | 'metas'`.
+
+**Features nuevas deployadas como Netlify Functions (v1 format):**
+
+- **`netlify/functions/chat.ts`** → `/api/chat`: Chat con contexto real de ventas, ledger de deudores y abonos. Fallback offline inteligente por categoría (deudas, hora, fecha, ventas, rutas). Activa con `GEMINI_API_KEY` en Netlify env vars.
+- **`netlify/functions/generate-config-from-url.ts`** → `/api/generate-config-from-url`: Scraping de metadatos HTML + Gemini con Google Search para productos reales. Fallback por categoría (nayaritas, agua, panadería, carnicería, distribuidora). Activa con `GEMINI_API_KEY`.
+- **`netlify.toml`** actualizado con redirects de `/api/*` a `/.netlify/functions/*` + SPA catch-all.
+
+**Artefacto entregado:** `MYSTERY_SHOP_AUDIT.html` — reporte visual dark-themed con KPIs, tarjetas de bugs, features, fortalezas, acción del usuario y roadmap.
+
+**Commits:** `2c4a41e` (8 bug fixes) · `98b7ef9` (Netlify Functions)
+
+**Pendiente solo del Usuario:**
+- Agregar `GEMINI_API_KEY` en `app.netlify.com/projects/iarutepro` → Site configuration → Environment variables → Trigger deploy.
+- Conectar repositorio GitHub a Netlify para deploys automáticos.
+- Revocar token Netlify `nfp_3e73tWHBLxF9NiVi9naqyipcZhNxu44mcfed` (expuesto en sesión anterior).
+
+**Roadmap para próximas sesiones:**
+- PIN configurable por el dueño (Firestore, no localStorage)
+- Botones Ticket y CSV — impresora Bluetooth + exportación real
+- ProAliados — pantalla de referidos con código único
+- Repartidor Independiente — auto-registro sin admin
+- Historial de cierres por fecha
+
+**Notas para Gemini (Silla B):**
+- Las Netlify Functions usan **v1 format** (`export const handler = async (event: any) => {}`), NO v2. Si necesitas modificarlas, mantén ese formato.
+- `server.ts` sigue corriendo localmente para dev — las funciones de Netlify son el proxy de producción.
+- Los 3 puntos de Junta #002 (PIN configurable, Firestore auth rules, historial_cierres) siguen pendientes de tu voto.
+- El build confirma 0 errores TypeScript post-audit (`npx tsc --noEmit --skipLibCheck`).
+
+🟢 Carril limpio — siguiente: Gemini (Silla B) para Junta #002 + Usuario para GEMINI_API_KEY en Netlify.
+

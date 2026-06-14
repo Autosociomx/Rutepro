@@ -13,14 +13,16 @@ interface LandingScreenProps {
   };
   onGo: (screen: string) => void;
   onCerrarSesion: () => void;
+  onNuevaDemo: () => void;
   onSaveConfig: (newCfg: AppConfig) => Promise<void>;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
 }
 
-export const LandingScreen: React.FC<LandingScreenProps> = ({ 
-  cfg, 
-  onGo, 
+export const LandingScreen: React.FC<LandingScreenProps> = ({
+  cfg,
+  onGo,
   onCerrarSesion,
+  onNuevaDemo,
   onSaveConfig,
   triggerToast
 }) => {
@@ -380,12 +382,19 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
               </div>
 
               {/* Reset/Edit manual buttons for complete user control */}
-              <div className="flex gap-2 justify-center pt-2">
-                <button 
-                  onClick={() => onGo('configuracion')} 
+              <div className="flex gap-3 justify-center pt-2 flex-wrap">
+                <button
+                  onClick={() => onGo('configuracion')}
                   className="text-xs text-[#8A93A8] hover:text-[#EEF1F8] underline cursor-pointer transition-colors"
                 >
                   Modificar Configuración Manual
+                </button>
+                <span className="text-[#3E4A60] text-xs select-none">·</span>
+                <button
+                  onClick={onNuevaDemo}
+                  className="text-xs text-[#4A8FFF] hover:text-[#7AB5FF] underline cursor-pointer transition-colors"
+                >
+                  ↩ Nueva Demo
                 </button>
               </div>
             </div>
