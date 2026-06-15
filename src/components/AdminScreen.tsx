@@ -11,9 +11,11 @@ interface AdminScreenProps {
   onCerrarSesion?: () => void;
   ownerEmail?: string;
   ownerUid: string;
+  isContador?: boolean;
+  onBackToContador?: () => void;
 }
 
-export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion, ownerEmail, ownerUid }) => {
+export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion, ownerEmail, ownerUid, isContador, onBackToContador }) => {
   // Navigation & Tabs consolidated under Administrative Settings Gear, while main screen is AI Chat Dashboard!
   const [showConfigMenu, setShowConfigMenu] = useState(false);
   const [ventas, setVentas] = useState<Venta[]>([]);
@@ -822,16 +824,24 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
         </div>
 
         <div className="flex items-center gap-1.5">
+          {isContador && onBackToContador && (
+            <button
+              onClick={onBackToContador}
+              className="h-9 px-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-all text-[10px] font-bold cursor-pointer"
+            >
+              ← Mis negocios
+            </button>
+          )}
           {/* Action Menu button */}
-          <button 
+          <button
             onClick={() => setShowConfigMenu(!showConfigMenu)}
             className="w-9 h-9 rounded-lg bg-[#111520] hover:bg-[#1C2235] border border-white/5 flex items-center justify-center text-gray-300 hover:text-white transition-all text-xs cursor-pointer relative"
           >
             ⚙️
           </button>
-          
-          <button 
-            onClick={onGoBack} 
+
+          <button
+            onClick={onGoBack}
             className="w-9 h-9 rounded-lg bg-[#111520] hover:bg-slate-800 border border-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-all text-xs cursor-pointer"
           >
             ←
@@ -894,9 +904,25 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             >
               🧹 Reiniciar Balance a $0
             </button>
+            {!isContador && (
+              <button
+                onClick={() => {
+                  setShowConfigMenu(false);
+                  const link = `${window.location.origin}?join=${ownerUid}`;
+                  navigator.clipboard.writeText(link).then(() => {
+                    triggerToast('✓ Enlace de acceso copiado. Envíalo a tu contador.', 'ok');
+                  }).catch(() => {
+                    triggerToast('No se pudo copiar el enlace', 'err');
+                  });
+                }}
+                className="p-3 bg-[#111520] border border-white/5 rounded-xl hover:bg-[#181D2B] text-left text-xs text-sky-400 cursor-pointer transition-all"
+              >
+                🔗 Compartir acceso con contador
+              </button>
+            )}
           </div>
 
-          <button 
+          <button
             onClick={() => {
               setShowConfigMenu(false);
               setShowExitConfirm(true);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType, auth } from './firebase';
 import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, deleteDoc, writeBatch, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
 import { syncLocalTransactions } from './utils/syncEngine';
 
@@ -17,12 +17,19 @@ import { AdminScreen } from './components/AdminScreen';
 import { WelcomeModal } from './components/WelcomeModal';
 import { AuthScreen } from './components/AuthScreen';
 import { PaywallScreen } from './components/PaywallScreen';
+import { ContadorScreen } from './components/ContadorScreen';
 
 interface BillingInfo {
   status: 'trial' | 'active' | 'expired';
   trial_ends_at?: number;
   days_remaining?: number;
   owner_nombre?: string;
+}
+
+interface UserProfile {
+  rol?: 'dueno' | 'contador';
+  nombre?: string;
+  negocios_gestionados?: string[];
 }
 
 export default function App() {
@@ -68,6 +75,8 @@ export default function App() {
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
   const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
   const [billingLoading, setBillingLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [contadorNegocioUid, setContadorNegocioUid] = useState<string | null>(null);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setErrorToast({ message: msg, type });
@@ -115,7 +124,7 @@ export default function App() {
     ? ''
     : isWorkerMode
       ? (new URLSearchParams(window.location.search).get('uid') || '')
-      : (authUser?.uid || '');
+      : contadorNegocioUid || (authUser?.uid || '');
 
   // Real-time Firestore synchronization on mount for the corporate setup
   useEffect(() => {
@@ -185,6 +194,30 @@ export default function App() {
     return unsub;
   }, []);
 
+  // Maneja ?join={ownerUid} — vincula al contador con el negocio del dueño
+  useEffect(() => {
+    const joinUid = new URLSearchParams(window.location.search).get('join');
+    if (!joinUid || !authUser?.uid) return;
+
+    const contadorUid = authUser.uid;
+    const accesoRef = doc(db, 'negocios', joinUid, 'acceso', contadorUid);
+    const usuarioRef = doc(db, 'usuarios', contadorUid);
+
+    setDoc(accesoRef, {
+      nombre: userProfile?.nombre || 'Contador',
+      rol: 'contador',
+      addedAt: Date.now(),
+    }).then(() =>
+      updateDoc(usuarioRef, {
+        negocios_gestionados: arrayUnion(joinUid),
+        rol: 'contador',
+      })
+    ).then(() => {
+      window.history.replaceState({}, '', window.location.pathname);
+      triggerToast('✓ Negocio vinculado exitosamente');
+    }).catch(e => console.error('join error:', e));
+  }, [authUser?.uid]);
+
   // Billing / subscription gate — reads usuarios/{uid} for plan status
   useEffect(() => {
     if (isDemoMode || isWorkerMode) {
@@ -202,6 +235,14 @@ export default function App() {
         return;
       }
       const d = snap.data() as any;
+
+      // Perfil de usuario (rol + negocios gestionados)
+      setUserProfile({
+        rol: d.rol,
+        nombre: d.nombre,
+        negocios_gestionados: d.negocios_gestionados || [],
+      });
+
       const trialEndsAt: number | undefined = d.trial_ends_at ?? d.billing?.trial_ends_at;
       const planStatus: string = d.billing?.status ?? d.plan ?? 'trial';
 
@@ -499,6 +540,26 @@ export default function App() {
     </div>
   );
 
+  // Modo contador: si el usuario tiene rol=contador y no ha seleccionado un negocio
+  if (userProfile?.rol === 'contador' && !contadorNegocioUid && !isDemoMode && !isWorkerMode) return (
+    <>
+      <ContadorScreen
+        contadorUid={authUser?.uid || ''}
+        contadorNombre={userProfile.nombre || 'Contador'}
+        negociosGestionados={userProfile.negocios_gestionados || []}
+        onEnterNegocio={(uid) => setContadorNegocioUid(uid)}
+        onCerrarSesion={handleCerrarSesion}
+        triggerToast={triggerToast}
+      />
+      {errorToast && (
+        <div className={`fixed bottom-6 left-5 right-5 p-3.5 rounded-xl z-50 shadow-md text-xs font-bold flex items-center gap-2 justify-center animate-fade-in ${errorToast.type === 'err' ? 'bg-red-950/80 border border-red-500/20 text-red-400' : 'bg-emerald-950/80 border border-emerald-500/20 text-[#00C896]'}`}>
+          <span>{errorToast.type === 'err' ? '⚠️' : '✓'}</span>
+          <span>{errorToast.message}</span>
+        </div>
+      )}
+    </>
+  );
+
   // Paywall: trial expirado y sin plan activo
   if (billingInfo?.status === 'expired' && !isDemoMode && !isWorkerMode) return (
     <>
@@ -571,6 +632,8 @@ export default function App() {
           onCerrarSesion={handleCerrarSesion}
           ownerEmail={authUser?.email ?? undefined}
           ownerUid={ownerUid}
+          isContador={!!contadorNegocioUid}
+          onBackToContador={contadorNegocioUid ? () => setContadorNegocioUid(null) : undefined}
         />
       )}
 

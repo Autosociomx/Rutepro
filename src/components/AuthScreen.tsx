@@ -28,6 +28,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPwd, setLoginPwd] = useState('');
 
+  const [esContador, setEsContador] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [fieldErr, setFieldErr] = useState<string>('');
 
@@ -57,9 +58,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
         nombre: nombre.trim(),
         email: email.trim().toLowerCase(),
         telefono: telefono.trim(),
+        rol: esContador ? 'contador' : 'dueno',
         plan: 'trial',
         trial_ends_at: trialEndsAt,
         billing: { status: 'trial', trial_ends_at: trialEndsAt },
+        negocios_gestionados: esContador ? [] : null,
         aviso_privacidad: true,
         aviso_privacidad_ts: now,
         created_at: now
@@ -210,6 +213,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
                   placeholder="Repite tu contraseña"
                   autoComplete="new-password"
                 />
+              </div>
+
+              {/* Tipo de cuenta */}
+              <div className="bg-[#111520] border border-white/5 rounded-xl p-3 space-y-2">
+                <p className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Tipo de cuenta</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setEsContador(false); clearErr(); }}
+                    className={`py-2 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${!esContador ? 'bg-amber-500 text-slate-950' : 'bg-[#181D2B] text-[#8A93A8] border border-white/5'}`}
+                  >
+                    🏪 Dueño de negocio
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEsContador(true); clearErr(); }}
+                    className={`py-2 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${esContador ? 'bg-amber-500 text-slate-950' : 'bg-[#181D2B] text-[#8A93A8] border border-white/5'}`}
+                  >
+                    🧾 Contador / Admin
+                  </button>
+                </div>
+                {esContador && (
+                  <p className="text-[9px] text-amber-400/80 leading-relaxed">
+                    Modo contador: gestiona múltiples negocios desde un solo panel.
+                  </p>
+                )}
               </div>
 
               {/* Aviso de Privacidad — LFPDPPP */}

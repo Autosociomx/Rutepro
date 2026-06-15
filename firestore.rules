@@ -38,8 +38,21 @@ service cloud.firestore {
         return request.auth != null;
       }
 
+      function isContador() {
+        return request.auth != null &&
+          exists(/databases/$(database)/documents/negocios/$(ownerUid)/acceso/$(request.auth.uid));
+      }
+
       function validId(id) {
         return id is string && id.size() > 0 && id.size() <= 128;
+      }
+
+      // ── Acceso de contadores ──
+      // El dueño concede acceso; el contador crea su propio doc.
+      match /acceso/{contadorUid} {
+        allow read: if isOwner() || (request.auth != null && request.auth.uid == contadorUid);
+        allow create: if request.auth != null && request.auth.uid == contadorUid;
+        allow delete: if isOwner();
       }
 
       // ── Configuración del negocio ──
@@ -47,7 +60,7 @@ service cloud.firestore {
       // productos, precios y datos del negocio.
       // Solo el dueño puede modificar la configuración.
       match /config/{configId} {
-        allow read: if isWorker();
+        allow read: if isWorker() || isContador();
         allow write: if isOwner();
       }
 
@@ -55,7 +68,7 @@ service cloud.firestore {
       // Workers registran ventas durante la ruta.
       // Solo el dueño puede eliminar (preserva trazabilidad).
       match /ventas/{ventaId} {
-        allow read: if isWorker();
+        allow read: if isWorker() || isContador();
         allow create, update: if isWorker() &&
           validId(ventaId) &&
           request.resource.data.monto is number &&
@@ -67,7 +80,7 @@ service cloud.firestore {
 
       // ── Devoluciones / mermas ──
       match /devoluciones/{devolucionId} {
-        allow read: if isWorker();
+        allow read: if isWorker() || isContador();
         allow create, update: if isWorker() &&
           validId(devolucionId) &&
           request.resource.data.cantidad is number &&
@@ -78,7 +91,7 @@ service cloud.firestore {
       // ── Clientes / directorio de ruta ──
       // Los repartidores pueden agregar y editar clientes en ruta.
       match /clientes/{clienteId} {
-        allow read: if isWorker();
+        allow read: if isWorker() || isContador();
         allow create, update: if isWorker() &&
           validId(clienteId) &&
           request.resource.data.nombre is string &&
@@ -89,13 +102,14 @@ service cloud.firestore {
       // ── Auditorías de Cliente Misterioso ──
       // Función administrativa exclusiva del dueño.
       match /mystery_audits/{auditId} {
-        allow read, write: if isOwner();
+        allow read: if isOwner() || isContador();
+        allow write: if isOwner();
       }
 
       // ── Abonos / pagos de fiados ──
       // El cajero/mostrador registra abonos; el dueño administra.
       match /abonos/{abonoId} {
-        allow read: if isWorker();
+        allow read: if isWorker() || isContador();
         allow create: if isWorker() &&
           validId(abonoId) &&
           request.resource.data.monto is number &&
@@ -106,14 +120,14 @@ service cloud.firestore {
       // ── Inventario de ruta ──
       // El repartidor carga inventario al iniciar la ruta.
       match /inventario_ruta/{vendedorId} {
-        allow read: if isWorker();
+        allow read: if isWorker() || isContador();
         allow write: if isWorker() && validId(vendedorId);
       }
 
       // ── Historial de cierres ──
       // El repartidor genera el cierre al terminar la ruta.
       match /historial_cierres/{cierreId} {
-        allow read: if isWorker();
+        allow read: if isWorker() || isContador();
         allow create: if isWorker() &&
           validId(cierreId) &&
           request.resource.data.ventas_efectivo is number &&
@@ -123,7 +137,7 @@ service cloud.firestore {
 
       // ── Métricas de ruta ──
       match /rutas_metrics/{metricId} {
-        allow read: if isWorker();
+        allow read: if isWorker() || isContador();
         allow write: if isWorker() && validId(metricId);
       }
 

@@ -153,4 +153,13 @@ export interface Abono {
   recibidoPor?: string; // name of dispatcher or cashier
 }
 
+export interface NegocioEnGestion {
+  ownerUid: string;
+  nombre: string;
+  letra: string;
+  color: string;
+  subtitulo?: string;
+  logo_url?: string;
+}
+
 
