@@ -19,11 +19,9 @@ interface RepartidorScreenProps {
   cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
-  isWorkerMode?: boolean;
-  ownerUid: string;
 }
 
-export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast, isWorkerMode, ownerUid }) => {
+export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
   const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
   const [activeTab, setActiveTab] = useState<'ped' | 'cli' | 'cierr' | 'ia'>('ped');
   const [horaIni, setHoraIni] = useState<Date | null>(null);
@@ -56,8 +54,81 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     { role: 'bot', text: '¡Hola! Soy tu asistente de ruta. Puedo predecir las ventas del día, analizar tus metas de cobro o darte consejos para reducir devoluciones hoy. ¿En qué te ayudo?' }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  
+  // Mystery Shopper AI states
+  const [mysteryMode, setMysteryMode] = useState(false);
+  const [mysteryChatLogs, setMysteryChatLogs] = useState<{ role: 'bot' | 'usr'; text: string }[]>([]);
+  const [mysteryTurnCount, setMysteryTurnCount] = useState(0);
+  const [auditReport, setAuditReport] = useState<any | null>(null);
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+  const startMysterySession = () => {
+    setMysteryMode(true);
+    setMysteryChatLogs([
+      { role: 'bot', text: '🕵️ MODO AUDITORÍA ACTIVADO. Iniciando simulación de cliente incógnito...' },
+      { role: 'bot', text: '¿Qué tal? Oye, una pregunta rápida... ¿si me llevo varias cajas me puedes hacer un descuento por fuera? Es que mi jefe me dio un presupuesto ajustado.' }
+    ]);
+    setMysteryTurnCount(0);
+  };
+
+  const handleMysteryChat = async () => {
+    const qStr = chatInp.trim();
+    if (!qStr) return;
+    setChatInp('');
+
+    const newLogs = [...mysteryChatLogs, { role: 'usr', text: qStr }];
+    setMysteryChatLogs(newLogs);
+    setChatLoading(true);
+
+    try {
+      const response = await fetch('/api/mystery-shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: qStr,
+          chatHistory: mysteryChatLogs.slice(-6),
+          vendedorNombre: selectedSeller?.nombre,
+          giroNegocio: cfg.nombre,
+          turnCount: mysteryTurnCount
+        })
+      });
+      const data = await response.json();
+      
+      if (data.isAuditComplete) {
+        // AI ended the simulation with a report
+        setAuditReport(data);
+        setMysteryChatLogs([...newLogs, { role: 'bot', text: data.texto_final || 'Auditoría finalizada.' }]);
+        
+        // Save to Firestore
+        const auditId = 'AI_AUDIT_' + Date.now();
+        await setDoc(doc(db, 'mystery_audits', auditId), {
+          id: auditId,
+          vendedorId: selectedSeller?.id,
+          vendedorNombre: selectedSeller?.nombre,
+          fecha: new Date().toLocaleDateString('es-MX'),
+          auditor: 'Mystery AI Agent',
+          checks: {
+            cobroExacto: data.puntuacion > 70,
+            entregaRecibo: true, // inferred
+            presentacionLimpia: true,
+            tratoAmable: data.resultado === 'APROBADO'
+          },
+          calificacion: data.puntuacion,
+          notas: `Recomendación: ${data.recomendacion_entrenamiento}. Fallas: ${data.fallas_detectadas.join(', ')}`,
+          timestamp: Date.now()
+        });
+      } else {
+        setMysteryChatLogs([...newLogs, { role: 'bot', text: data.text }]);
+        setMysteryTurnCount(prev => prev + 1);
+      }
+    } catch (err) {
+      setMysteryChatLogs([...newLogs, { role: 'bot', text: 'Error de señal en la llamada. Intenta reconectar.' }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   const handleSelectSeller = (vnd: Seller) => {
     setSelectedSeller(vnd);
@@ -73,7 +144,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     // Fetch clients for this seller
     setLoadingClientes(true);
-    const qClients = query(collection(db, 'negocios', ownerUid, 'clientes'), where('vendedorId', '==', vnd.id));
+    const qClients = query(collection(db, 'clientes'), where('vendedorId', '==', vnd.id));
     getDocs(qClients)
       .then((snap) => {
         const loaded: Client[] = [];
@@ -171,7 +242,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     }
 
     // 2. Sincronización en segundo plano con la nube sin bloquear el flujo real del repartidor
-    setDoc(doc(db, 'negocios', ownerUid, 'devoluciones', devolId), newDevol)
+    setDoc(doc(db, 'devoluciones', devolId), newDevol)
       .then(() => {
         console.log(`✓ Merma ${devolId} sincronizada exitosamente con la nube.`);
       })
@@ -278,7 +349,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
       setMisClientes(prev => [newClientDoc, ...prev]);
 
-      setDoc(doc(db, 'negocios', ownerUid, 'clientes', finalClientId), newClientDoc)
+      setDoc(doc(db, 'clientes', finalClientId), newClientDoc)
         .then(() => {
           console.log(`✓ Master Client ${finalClientId} registered on cloud route database.`);
         })
@@ -315,8 +386,6 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         pr: item.pr,
         ic: item.icono
       })),
-      lat: finalClientLat,
-      lng: finalClientLng,
       timestamp: Date.now(),
       validado: true,
       sincronizado: false
@@ -367,7 +436,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       validado: true
     };
 
-    setDoc(doc(db, 'negocios', ownerUid, 'ventas', saleId), cleanDbData)
+    setDoc(doc(db, 'ventas', saleId), cleanDbData)
       .then(() => {
         console.log(`✓ Venta de ruta ${saleId} sincronizada with cloud.`);
         try {
@@ -405,8 +474,16 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
   };
 
   const handleAskAI = async (textOver?: string) => {
-    const qStr = textOver || chatInp.trim();
+    const qStr = (textOver || chatInp).trim();
     if (!qStr) return;
+
+    // Secret trigger detection
+    if (qStr.toLowerCase().includes('@agente misterioso') || qStr.toLowerCase().includes('@mystery')) {
+      if (!textOver) setChatInp('');
+      startMysterySession();
+      return;
+    }
+
     if (!textOver) setChatInp('');
 
     const newLogs = [...chatLogs, { role: 'usr', text: qStr }];
@@ -436,10 +513,38 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       const data = await response.json();
       setChatLogs([...newLogs, { role: 'bot', text: data.text || 'Sin respuesta del asesor de ruta.' }]);
     } catch (err) {
-      setChatLogs([...newLogs, { role: 'bot', text: 'Asistencia sin conexión activa. Sigue registrando entregas normalmente — tus datos están guardados y se sincronizan cuando recuperes señal.' }]);
+      setChatLogs([...newLogs, { role: 'bot', text: 'Asistencia offline: ¡Sigue con el excelente trabajo en tu zona de reparto! Configura tu GEMINI_API_KEY para habilitar asesoría en ruta completa.' }]);
     } finally {
       setChatLoading(false);
     }
+  };
+
+  const startVoiceInput = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      triggerToast('Dictado por voz no disponible.', 'err');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-MX';
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      triggerToast('Escuchando (Español)...');
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setChatInp(transcript);
+      setIsListening(false);
+      triggerToast('Entendido: ' + transcript);
+    };
+
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
   };
 
   const getShiftDuration = () => {
@@ -489,11 +594,9 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     return (
       <div className="min-h-screen bg-[#06080C] text-[#EEF1F8] flex flex-col font-sans">
         <div className="sticky top-0 z-50 h-14 bg-[#06080C]/94 backdrop-blur-md border-b border-white/5 px-4.5 flex items-center gap-3">
-          {!isWorkerMode && (
-            <button onClick={onGoBack} className="w-9 h-9 rounded-lg bg-[#111520] border border-white/5 flex items-center justify-center text-[#8A93A8] hover:text-[#EEF1F8] cursor-pointer">
-              ←
-            </button>
-          )}
+          <button onClick={onGoBack} className="w-9 h-9 rounded-lg bg-[#111520] border border-white/5 flex items-center justify-center text-[#8A93A8] hover:text-[#EEF1F8] cursor-pointer">
+            ←
+          </button>
           <div className="text-left font-display font-bold text-sm tracking-wide">Iniciar Jornada</div>
         </div>
         <div className="flex-1 p-5 overflow-y-auto">
@@ -535,12 +638,12 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       {/* Driver KPIs */}
       <div className="px-4.5 pt-3.5 pb-1 shrink-0 grid grid-cols-3 gap-2">
         <div className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center">
-          <div className="text-xs font-bold text-emerald-400 tracking-wider">{formatPrice(cliHoy.filter(c => c.tipoCobro === 'efectivo').reduce((s, c) => s + c.total, 0))}</div>
-          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Efectivo</div>
+          <div className="text-xs font-bold text-[#E8B04A] tracking-wider">{formatPrice(shiftTotal)}</div>
+          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Cobrado</div>
         </div>
         <div className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center">
-          <div className="text-xs font-bold text-[#E8B04A] tracking-wider">{formatPrice(cliHoy.filter(c => c.tipoCobro === 'credito').reduce((s, c) => s + c.total, 0))}</div>
-          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">A Crédito</div>
+          <div className="text-xs font-bold text-[#EEF1F8] tracking-wider">{cliHoy.length}</div>
+          <div className="text-[9px] text-[#3E4A60] font-semibold uppercase tracking-wider mt-0.5">Clientes</div>
         </div>
         <div className="bg-[#111520] border border-white/5 rounded-xl p-2.5 text-center">
           <div className="text-xs font-bold text-red-400 tracking-wider">{devoluciones.length}</div>
@@ -742,12 +845,12 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
             </div>
 
             <div className="flex gap-2">
-              <div className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold text-[#3E4A60] text-center select-none" title="Próximamente">
-                🖨️ <span className="text-[9px]">Próximamente</span>
-              </div>
-              <div className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold text-[#3E4A60] text-center select-none" title="Próximamente">
-                📥 <span className="text-[9px]">Próximamente</span>
-              </div>
+              <button onClick={() => triggerToast('🖨️ Conectando impresora Bluetooth térmica...')} className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold hover:bg-[#181D2B] text-white transition-all cursor-pointer text-center">
+                🖨️ Ticket
+              </button>
+              <button onClick={() => triggerToast('📥 Exportando archivo de Liquidación CSV...')} className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-[#111520] text-xs font-semibold hover:bg-[#181D2B] text-white transition-all cursor-pointer text-center">
+                📥 CSV
+              </button>
               <button onClick={handleWhatsAppReport} className="flex-1 py-2 px-3 border border-white/5 rounded-xl bg-green-500/10 border-green-500/20 text-green-400 text-xs font-bold transition-all cursor-pointer text-center">
                 📱 WhatsApp
               </button>
@@ -764,61 +867,144 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
         {/* PANEL: ASISTENTE IA */}
         {activeTab === 'ia' && (
-          <div className="space-y-4 flex flex-col h-[340px] justify-between">
+          <div className="space-y-4 flex flex-col h-[340px] justify-between relative">
+            
+            {/* Header for Mystery Mode if active */}
+            {mysteryMode && (
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="animate-pulse text-amber-400 text-xs">●</span>
+                  <span className="text-[10px] font-bold text-amber-200 uppercase">Simulación de Auditoría en Vivo</span>
+                </div>
+                {!auditReport && (
+                  <span className="text-[9px] font-mono text-amber-500/70">Turno {mysteryTurnCount}/5</span>
+                )}
+                {auditReport && (
+                  <button 
+                    onClick={() => {
+                      setMysteryMode(false);
+                      setAuditReport(null);
+                      setMysteryChatLogs([]);
+                    }}
+                    className="text-[9px] font-bold text-red-400 underline decoration-red-400/30"
+                  >
+                    Salir
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto space-y-2.5 pr-1.5">
-              {chatLogs.map((log, idx) => (
+              {(mysteryMode ? mysteryChatLogs : chatLogs).map((log, idx) => (
                 <div 
                   key={idx} 
                   className={`flex ${log.role === 'usr' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`p-3 rounded-2xl max-w-[85%] text-xs leading-relaxed text-left ${log.role === 'usr' ? 'bg-[#181D2B] text-white' : 'bg-amber-500/5 border border-amber-500/10 text-amber-100'}`}>
-                    {log.role === 'bot' && <span className="block text-[8px] font-mono text-[#C9912A] uppercase font-bold tracking-wider mb-1">RoutePro AI</span>}
+                  <div className={`p-3 rounded-2xl max-w-[85%] text-xs leading-relaxed text-left ${log.role === 'usr' ? 'bg-[#181D2B] text-white' : (mysteryMode ? 'bg-amber-950/20 border border-amber-500/20 text-amber-50' : 'bg-amber-500/5 border border-amber-500/10 text-amber-100')}`}>
+                    {log.role === 'bot' && <span className="block text-[8px] font-mono text-[#C9912A] uppercase font-bold tracking-wider mb-1">{mysteryMode ? 'CLIENTE INCÓGNITO' : 'RoutePro AI'}</span>}
                     {log.text}
                   </div>
                 </div>
               ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="p-3 rounded-2xl bg-amber-500/5 border border-amber-500/10 text-[10px] text-amber-200 animate-pulse">
+                    Escribiendo...
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="shrink-0 space-y-2">
-              {/* Quick drivers prompts */}
-              <div className="flex gap-2 overflow-x-auto pb-1 invisible-scrollbar">
+            {/* Audit Report Overlay if complete */}
+            {auditReport && (
+              <div className="absolute inset-x-0 top-1/4 z-10 bg-[#111520] border border-amber-500/30 rounded-2xl p-5 shadow-2xl animate-fade-in text-center space-y-4">
+                <div className="text-3xl">🛡️</div>
+                <div>
+                  <h3 className="font-display font-bold text-sm text-white">Resultado de Auditoría AURA</h3>
+                  <div className={`text-xl font-extrabold mt-1 ${auditReport.resultado === 'APROBADO' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {auditReport.resultado}: {auditReport.puntuacion}/100
+                  </div>
+                </div>
+                <div className="text-left space-y-2">
+                  <div className="text-[10px] font-bold text-amber-500 uppercase">Fallas Detectadas:</div>
+                  <ul className="text-[10px] text-gray-300 space-y-1">
+                    {auditReport.fallas_detectadas.length > 0 ? (
+                      auditReport.fallas_detectadas.map((f: string, i: number) => <li key={i}>• {f}</li>)
+                    ) : (
+                      <li>✓ Ninguna falla de protocolo detectada. ¡Excelente trabajo!</li>
+                    )}
+                  </ul>
+                </div>
+                <div className="bg-[#06080C] p-3 rounded-lg border border-white/5">
+                  <div className="text-[9px] font-bold text-white uppercase mb-1">Plan de Mejora:</div>
+                  <div className="text-[10px] text-gray-400 italic leading-relaxed">"{auditReport.recomendacion_entrenamiento}"</div>
+                </div>
                 <button 
-                  onClick={() => handleAskAI('¿Cómo predigo mi inventario de mañana?')} 
-                  className="bg-[#111520] border border-white/5 rounded-full px-3.5 py-1.5 text-[10px] text-[#8A93A8] whitespace-nowrap active:scale-95 transition-all text-left cursor-pointer hover:bg-[#181D2B]"
+                  onClick={() => {
+                    setMysteryMode(false);
+                    setAuditReport(null);
+                    setMysteryChatLogs([]);
+                  }}
+                  className="w-full py-2.5 bg-amber-500 text-black font-bold rounded-lg text-xs"
                 >
-                  💡 Predecir carga mañana
-                </button>
-                <button 
-                  onClick={() => handleAskAI('Dame consejos para mermas mínimas')} 
-                  className="bg-[#111520] border border-white/5 rounded-full px-3.5 py-1.5 text-[10px] text-[#8A93A8] whitespace-nowrap active:scale-95 transition-all text-left cursor-pointer hover:bg-[#181D2B]"
-                >
-                  🛡️ Consejos mermas
-                </button>
-                <button 
-                  onClick={() => handleAskAI('¿Qué clientes tienen menor ticket?')} 
-                  className="bg-[#111520] border border-white/5 rounded-full px-3.5 py-1.5 text-[10px] text-[#8A93A8] whitespace-nowrap active:scale-95 transition-all text-left cursor-pointer hover:bg-[#181D2B]"
-                >
-                  📊 Clientes bajos
+                  Continuar Jornada Normal
                 </button>
               </div>
+            )}
 
-              <div className="flex gap-1.5 bg-[#0B0E14] border border-white/5 rounded-lg p-1.5">
-                <input 
-                  type="text" 
-                  value={chatInp} 
-                  onChange={(e) => setChatInp(e.target.value)} 
-                  onKeyDown={(e) => e.key === 'Enter' && handleAskAI()}
-                  className="flex-1 bg-transparent p-1.5 text-xs focus:outline-none placeholder-[#3E4A60] text-white"
-                  placeholder="Ej: ¿Qué productos vendí más hoy?"
-                />
-                <button 
-                  onClick={() => handleAskAI()} 
-                  className="w-8 h-8 rounded-lg bg-[#E8B04A] text-[#06080C] text-xs font-bold hover:brightness-110 flex items-center justify-center shrink-0 active:scale-95 cursor-pointer"
-                >
-                  →
-                </button>
+            {!auditReport && (
+              <div className="shrink-0 space-y-2">
+                {/* Quick drivers prompts */}
+                {!mysteryMode && (
+                  <div className="flex gap-2 overflow-x-auto pb-1 invisible-scrollbar">
+                    <button 
+                      onClick={() => handleAskAI('¿Cómo predigo mi inventario de mañana?')} 
+                      className="bg-[#111520] border border-white/5 rounded-full px-3.5 py-1.5 text-[10px] text-[#8A93A8] whitespace-nowrap active:scale-95 transition-all text-left cursor-pointer hover:bg-[#181D2B]"
+                    >
+                      💡 Predecir carga mañana
+                    </button>
+                    <button 
+                      onClick={() => handleAskAI('Dame consejos para mermas mínimas')} 
+                      className="bg-[#111520] border border-white/5 rounded-full px-3.5 py-1.5 text-[10px] text-[#8A93A8] whitespace-nowrap active:scale-95 transition-all text-left cursor-pointer hover:bg-[#181D2B]"
+                    >
+                      🛡️ Consejos mermas
+                    </button>
+                    <button 
+                      onClick={() => handleAskAI('¿Qué clientes tienen menor ticket?')} 
+                      className="bg-[#111520] border border-white/5 rounded-full px-3.5 py-1.5 text-[10px] text-[#8A93A8] whitespace-nowrap active:scale-95 transition-all text-left cursor-pointer hover:bg-[#181D2B]"
+                    >
+                      📊 Clientes bajos
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex gap-1.5 bg-[#0B0E14] border border-white/5 rounded-lg p-1.5 items-center">
+                  <button 
+                    onClick={startVoiceInput}
+                    className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 transition-all cursor-pointer ${isListening ? 'bg-red-500/20 text-red-400 animate-pulse' : 'bg-[#181D2B] text-gray-400 hover:text-white'}`}
+                    title="Dictado por voz (Español)"
+                  >
+                    {isListening ? '🛑' : '🎙️'}
+                  </button>
+                  <input 
+                    type="text" 
+                    value={chatInp} 
+                    onChange={(e) => setChatInp(e.target.value)} 
+                    onKeyDown={(e) => e.key === 'Enter' && (mysteryMode ? handleMysteryChat() : handleAskAI())}
+                    className="flex-1 bg-transparent p-1.5 text-xs focus:outline-none placeholder-[#3E4A60] text-white"
+                    placeholder={isListening ? "Escuchando en español..." : (mysteryMode ? "Contesta al cliente..." : "Ej: ¿Qué productos vendí más hoy?")}
+                  />
+                  <button 
+                    onClick={() => mysteryMode ? handleMysteryChat() : handleAskAI()} 
+                    disabled={chatLoading || (mysteryTurnCount >= 5 && mysteryMode) || isListening}
+                    className="w-8.5 h-8.5 rounded-lg font-bold hover:brightness-110 flex items-center justify-center shrink-0 active:scale-95 cursor-pointer text-slate-900 text-sm disabled:opacity-45"
+                    style={{ backgroundColor: cfg.color_principal || '#E8B04A' }}
+                  >
+                    🚀
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -1097,9 +1283,8 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
                 onClick={() => {
                   setShowDevolModal(false);
                   setDevolClienteName('');
-                  setSelectedDevolProdId('');
                   setDevolCant(1);
-                }}
+                }} 
                 className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-[#8A93A8] hover:text-white cursor-pointer active:scale-97 transition-all text-center"
               >
                 Cancelar

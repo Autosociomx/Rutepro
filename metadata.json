@@ -1,6 +1,6 @@
 {
   "name": "RoutePro Elite",
   "description": "Sistema avanzado de liquidación de rutas y control de inventario multigiro (Panadería, Tortillerías, Distribuidoras de Agua y Carnes) en tiempo real con Asesor IA.",
-  "requestFramePermissions": ["geolocation"],
+  "requestFramePermissions": ["geolocation", "microphone", "camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

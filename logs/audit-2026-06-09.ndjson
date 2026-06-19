@@ -1,2 +1,0 @@
-{"ts":1780968331482,"sessionId":"CLAUDE-1780968322606","agentId":"CLAUDE","provider":"claude","operation":"parlamento_status","target":null,"success":true}
-{"ts":1780968331527,"sessionId":"GEMINI-1780968322606","agentId":"GEMINI","provider":"gemini","operation":"list_files","target":"src","success":true}

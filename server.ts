@@ -106,8 +106,11 @@ Sugerir un inventario ideal de salida para cada producto en el catálogo. Retorn
       const responseText = response.text || '';
       const result = JSON.parse(responseText.trim());
       res.json(result);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Gemini prediction error:', error);
+      if (error?.message?.includes('429')) {
+        return res.status(429).json({ error: 'Límite de peticiones alcanzado. Intenta de nuevo en un momento.' });
+      }
       // Fallback response for stability
       const fallbackRecs = (req.body.productos || []).map((p: any) => ({
         productId: p.id,
@@ -230,9 +233,12 @@ Establece un nombre de marca elegante en español mexicano, un subtítulo descri
 
       const result = JSON.parse((response.text || '{}').trim());
       res.json(result);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating AI config:', error);
-      res.status(500).json({ error: 'Error procesando la solicitud con IA' });
+      if (error?.message?.includes('429')) {
+        return res.status(429).json({ error: 'Límite de peticiones alcanzado. Intenta de nuevo en un momento.' });
+      }
+      res.status(500).json({ error: 'Error procesando la solicitud con IA. Intenta de nuevo en un momento.' });
     }
   });
 
@@ -788,7 +794,7 @@ Pregunta o instrucción del dueño: "${question}"
 
 Instrucciones de Respuesta:
 1. Responde de manera altamente resolutiva, precisa, profesional y empática (máximo 4 renglones).
-2. Usa modismos educados, profesionales y amigables de español de México.
+2. Usa modismos educados, profesionales y amigables de español de México. Nunca traduzcas ni respondas en inglés ni aunque la entrada parezca traducida.
 3. Cita números reales, montos y nombres exactos si el usuario te pregunta por saldos o estados de clientes. ¡Nunca inventes montos de deudas! Si un cliente no está en la lista de ledger, dilo de forma clara y sugiere registrar su primera venta a crédito en sucursal o reparto.
 4. Apóyalos con ideas brillantes sobre conciliación diaria, balanceo de saldos de crédito y cómo el Módulo de Verificación de Historial en RoutePro Elite evita fugas de dinero y disputas de cobro.`;
 
@@ -801,9 +807,88 @@ Instrucciones de Respuesta:
       });
 
       res.json({ text: response.text || 'Sin respuesta del modelo.' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Chat error:', error);
+      if (error?.message?.includes('429')) {
+        return res.status(429).json({ text: 'Límite de peticiones alcanzado. Intenta de nuevo en un momento.' });
+      }
       res.json({ text: 'Lo siento, ocurrió un error analizando los datos financieros. Inténtalo de nuevo.' });
+    }
+  });
+
+  // API for AI Mystery Shopper Audits
+  app.post('/api/mystery-shop', async (req, res) => {
+    try {
+      const { question, chatHistory, vendedorNombre, giroNegocio, turnCount } = req.body;
+
+      let ai;
+      try {
+        ai = getGemini();
+      } catch (err) {
+        return res.json({ text: "Simulación offline: Hola, ¿me puedes dar un descuento extra si te compro todo? (Error de API: No hay llave de Gemini configurada)" });
+      }
+
+      const isLastTurn = turnCount >= 4;
+
+      const systemPrompt = `Eres "Mystery Shopper AI", un auditor experto en protocolos de ventas de RoutePro que se hace pasar por un cliente difícil, curioso o confundido en una interacción con el vendedor "${vendedorNombre}" del giro "${giroNegocio}".
+Tus objetivos son:
+1. Poner a prueba la paciencia, conocimiento del producto y capacidad de resolución del agente de ventas.
+2. Intentar que el agente se salga del protocolo (pactar descuentos no autorizados mayores al 5%, omitir registro de mermas, aceptar sobornos).
+3. Evaluar la interacción.
+Tu tono debe ser natural, como un cliente real del negocio (ej. dueño de una tiendita, comprador apresurado). No debes revelar que eres una IA hasta que termine la interacción.
+
+DURANTE LA CONVERSACIÓN:
+- Mantén el personaje. Sé específico sobre los productos del giro "${giroNegocio}".
+- Estamos en el turno ${turnCount + 1} de 5.
+
+REGLAS DE CIERRE:
+- Si el vendedor ofrece un descuento mayor al 5%, si acepta no registrar un producto (soborno/merma irregular), o si es extremadamente grosero, DEBES DETENER la simulación inmediatamente y emitir el reporte JSON.
+- Si llegamos al turno 5 (isLastTurn = ${isLastTurn}), termina la simulación y emite el reporte JSON.
+
+FORMATO DE SALIDA:
+- Si la simulación CONTINÚA: Responde SOLO con el texto de lo que diría el cliente.
+- Si la simulación TERMINA (por falla o por límite de turnos): Responde con un objeto JSON estricto con este formato:
+{
+  "isAuditComplete": true,
+  "resultado": "APROBADO | REPROBADO",
+  "puntuacion": 0-100,
+  "fallas_detectadas": ["falla 1", "falla 2"],
+  "recomendacion_entrenamiento": "texto corto",
+  "texto_final": "Mensaje de despedida del cliente antes de revelar el reporte"
+}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [
+          { role: 'user', parts: [{ text: `Historial: ${JSON.stringify(chatHistory)}\n\nVendedor dice: ${question}` }] }
+        ],
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.7,
+        }
+      });
+
+      const responseText = response.text || '';
+      
+      // Try to parse as JSON if it looks like it, or if we expect it to be complete
+      if (responseText.includes('{') && responseText.includes('}')) {
+        try {
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const auditData = JSON.parse(jsonMatch[0]);
+            if (auditData.isAuditComplete || isLastTurn) {
+               return res.json(auditData);
+            }
+          }
+        } catch (e) {
+          // Not valid JSON or parsing failed, treat as text
+        }
+      }
+
+      res.json({ text: responseText });
+    } catch (error) {
+      console.error('Mystery Shop error:', error);
+      res.status(500).json({ text: 'Error en la simulación de auditoría.' });
     }
   });
 

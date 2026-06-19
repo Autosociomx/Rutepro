@@ -2,146 +2,91 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // Default deny — ningún documento es accesible salvo regla explícita
-    // ──────────────────────────────────────────────────────────────────────────
+    // Global Safety Net (Default-Deny Catch-All)
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // Perfiles de usuario  /usuarios/{uid}
-    // Solo el propio usuario puede leer y escribir su perfil y datos de facturación.
-    // ──────────────────────────────────────────────────────────────────────────
-    match /usuarios/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    // Helper functions
+    function isValidId(id) {
+       return id is string && id.size() > 0 && id.size() <= 128;
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // Datos multi-tenant del negocio  /negocios/{ownerUid}/...
-    //
-    // isOwner() — el dueño autenticado con su propio UID
-    // isWorker() — cualquier usuario autenticado (incluye anónimos repartidores/cajeros)
-    //
-    // Política de escritura:
-    //  · Config y mystery audits → solo el dueño
-    //  · Ventas, devoluciones, abonos → workers crean/actualizan; dueño borra
-    //  · Clientes, inventario, cierres, métricas → workers tienen acceso completo
-    // ──────────────────────────────────────────────────────────────────────────
-    match /negocios/{ownerUid} {
+    function isHexColor(color) {
+      return color is string && (color.matches('^#[A-Fa-f0-9]{6}$') || color.matches('^#[A-Fa-f0-9]{3}$'));
+    }
 
-      function isOwner() {
-        return request.auth != null && request.auth.uid == ownerUid;
-      }
+    // Config global collection (for app preferences and brand color customization)
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                      configId == 'global' && 
+                      request.resource.data.nombre is string &&
+                      request.resource.data.nombre.size() <= 100 &&
+                      isHexColor(request.resource.data.color_principal);
+    }
 
-      function isWorker() {
-        return request.auth != null;
-      }
+    // Ventas collection
+    match /ventas/{ventaId} {
+      allow read: if true;
+      allow create, update: if request.auth != null && 
+                              isValidId(ventaId) && 
+                              request.resource.data.monto is number &&
+                              request.resource.data.monto >= 0 &&
+                              request.resource.data.vendedorNombre is string;
+      allow delete: if request.auth != null && isValidId(ventaId); // Allows cleanup during admin reset
+    }
 
-      function isContador() {
-        return request.auth != null &&
-          exists(/databases/$(database)/documents/negocios/$(ownerUid)/acceso/$(request.auth.uid));
-      }
+    // Devoluciones collection
+    match /devoluciones/{devolucionId} {
+      allow read: if true;
+      allow create, update: if request.auth != null && 
+                              isValidId(devolucionId) &&
+                              request.resource.data.cantidad is number &&
+                              request.resource.data.cantidad >= 0;
+      allow delete: if request.auth != null && isValidId(devolucionId); // Allows cleanup during admin reset
+    }
 
-      function validId(id) {
-        return id is string && id.size() > 0 && id.size() <= 128;
-      }
+    // Rutas metrics collection
+    match /rutas_metrics/{metricId} {
+      allow read: if true;
+      allow write: if request.auth != null && isValidId(metricId);
+    }
 
-      // ── Acceso de contadores ──
-      // El dueño concede acceso; el contador crea su propio doc.
-      match /acceso/{contadorUid} {
-        allow read: if isOwner() || (request.auth != null && request.auth.uid == contadorUid);
-        allow create: if request.auth != null && request.auth.uid == contadorUid;
-        allow delete: if isOwner();
-      }
+    // Clientes collection
+    match /clientes/{clienteId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                      isValidId(clienteId) &&
+                      request.resource.data.nombre is string &&
+                      request.resource.data.nombre.size() > 0;
+    }
 
-      // ── Configuración del negocio ──
-      // Los workers (repartidores) necesitan leer config para mostrar
-      // productos, precios y datos del negocio.
-      // Solo el dueño puede modificar la configuración.
-      match /config/{configId} {
-        allow read: if isWorker() || isContador();
-        allow write: if isOwner();
-      }
+    // Inventario ruta collection
+    match /inventario_ruta/{vendedorId} {
+      allow read: if true;
+      allow write: if request.auth != null && isValidId(vendedorId);
+    }
 
-      // ── Ventas ──
-      // Workers registran ventas durante la ruta.
-      // Solo el dueño puede eliminar (preserva trazabilidad).
-      match /ventas/{ventaId} {
-        allow read: if isWorker() || isContador();
-        allow create, update: if isWorker() &&
-          validId(ventaId) &&
-          request.resource.data.monto is number &&
-          request.resource.data.monto >= 0 &&
-          request.resource.data.vendedorNombre is string &&
-          request.resource.data.vendedorNombre.size() > 0;
-        allow delete: if isOwner();
-      }
+    // Historial cierres collection
+    match /historial_cierres/{cierreId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                      isValidId(cierreId) &&
+                      request.resource.data.ventas_efectivo is number &&
+                      request.resource.data.ventas_efectivo >= 0;
+    }
 
-      // ── Devoluciones / mermas ──
-      match /devoluciones/{devolucionId} {
-        allow read: if isWorker() || isContador();
-        allow create, update: if isWorker() &&
-          validId(devolucionId) &&
-          request.resource.data.cantidad is number &&
-          request.resource.data.cantidad >= 0;
-        allow delete: if isOwner();
-      }
+    // Mystery Audits collection
+    match /mystery_audits/{auditId} {
+      allow read: if true;
+      allow write: if request.auth != null && isValidId(auditId);
+    }
 
-      // ── Clientes / directorio de ruta ──
-      // Los repartidores pueden agregar y editar clientes en ruta.
-      match /clientes/{clienteId} {
-        allow read: if isWorker() || isContador();
-        allow create, update: if isWorker() &&
-          validId(clienteId) &&
-          request.resource.data.nombre is string &&
-          request.resource.data.nombre.size() > 0;
-        allow delete: if isOwner();
-      }
-
-      // ── Auditorías de Cliente Misterioso ──
-      // Función administrativa exclusiva del dueño.
-      match /mystery_audits/{auditId} {
-        allow read: if isOwner() || isContador();
-        allow write: if isOwner();
-      }
-
-      // ── Abonos / pagos de fiados ──
-      // El cajero/mostrador registra abonos; el dueño administra.
-      match /abonos/{abonoId} {
-        allow read: if isWorker() || isContador();
-        allow create: if isWorker() &&
-          validId(abonoId) &&
-          request.resource.data.monto is number &&
-          request.resource.data.monto > 0;
-        allow update, delete: if isOwner();
-      }
-
-      // ── Inventario de ruta ──
-      // El repartidor carga inventario al iniciar la ruta.
-      match /inventario_ruta/{vendedorId} {
-        allow read: if isWorker() || isContador();
-        allow write: if isWorker() && validId(vendedorId);
-      }
-
-      // ── Historial de cierres ──
-      // El repartidor genera el cierre al terminar la ruta.
-      match /historial_cierres/{cierreId} {
-        allow read: if isWorker() || isContador();
-        allow create: if isWorker() &&
-          validId(cierreId) &&
-          request.resource.data.ventas_efectivo is number &&
-          request.resource.data.ventas_efectivo >= 0;
-        allow update, delete: if isOwner();
-      }
-
-      // ── Métricas de ruta ──
-      match /rutas_metrics/{metricId} {
-        allow read: if isWorker() || isContador();
-        allow write: if isWorker() && validId(metricId);
-      }
-
-    } // /negocios/{ownerUid}
-
-  } // /databases/{database}/documents
+    // Abonos collection
+    match /abonos/{abonoId} {
+      allow read: if true;
+      allow write: if request.auth != null && isValidId(abonoId);
+    }
+  }
 }

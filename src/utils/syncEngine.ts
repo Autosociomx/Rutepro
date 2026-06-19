@@ -50,8 +50,7 @@ export function validateSale(sale: any): { isValid: boolean; reason?: string } {
  * Sweeps localStorage caches for offline sales and returns that have not been
  * synchronized (flagged by `sincronizado !== true`), validates and synchronizes them to Firestore.
  */
-export async function syncLocalTransactions(ownerUid: string): Promise<SyncResult> {
-  if (!ownerUid) return { ventasSincronizadas: 0, devolucionesSincronizadas: 0 };
+export async function syncLocalTransactions(): Promise<SyncResult> {
   let ventasSincronizadas = 0;
   let devolucionesSincronizadas = 0;
 
@@ -95,7 +94,7 @@ export async function syncLocalTransactions(ownerUid: string): Promise<SyncResul
                 validado: true // validated status
               };
 
-              await setDoc(doc(db, 'negocios', ownerUid, 'ventas', s.id), dbDoc);
+              await setDoc(doc(db, 'ventas', s.id), dbDoc);
               
               // Mark as synced locally
               sales[i].sincronizado = true;
@@ -141,7 +140,7 @@ export async function syncLocalTransactions(ownerUid: string): Promise<SyncResul
                 timestamp: d.timestamp || Date.now()
               };
 
-              await setDoc(doc(db, 'negocios', ownerUid, 'devoluciones', d.id), dbDoc);
+              await setDoc(doc(db, 'devoluciones', d.id), dbDoc);
               
               // Mark as synced locally
               devols[i].sincronizado = true;

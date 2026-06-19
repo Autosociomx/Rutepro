@@ -60,8 +60,6 @@ export interface Venta {
   items: VentaItem[];
   timestamp: number;
   hora?: string;
-  lat?: number;
-  lng?: number;
 }
 
 export interface Devolucion {
@@ -151,15 +149,6 @@ export interface Abono {
   fecha: string;
   timestamp: number;
   recibidoPor?: string; // name of dispatcher or cashier
-}
-
-export interface NegocioEnGestion {
-  ownerUid: string;
-  nombre: string;
-  letra: string;
-  color: string;
-  subtitulo?: string;
-  logo_url?: string;
 }
 
 

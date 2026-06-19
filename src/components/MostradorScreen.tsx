@@ -16,11 +16,9 @@ interface MostradorScreenProps {
   cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
-  isWorkerMode?: boolean;
-  ownerUid: string;
 }
 
-export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast, isWorkerMode, ownerUid }) => {
+export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [cartMos, setCartMos] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
   const [paymentType, setPaymentType] = useState<'efectivo' | 'tarjeta'>('efectivo');
@@ -155,7 +153,7 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
       validado: true
     };
 
-    setDoc(doc(db, 'negocios', ownerUid, 'ventas', saleId), cleanDbData)
+    setDoc(doc(db, 'ventas', saleId), cleanDbData)
       .then(() => {
         console.log(`✓ Venta de mostrador ${saleId} sincronizada con la nube.`);
         // Mark as synchronized in local storage
@@ -455,17 +453,15 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
           <div className="bg-[#111520] border border-white/10 p-5.5 rounded-2xl max-w-xs w-full space-y-3 shadow-2xl text-left animate-fade-in">
             <div className="font-display font-bold text-sm text-white">Cerradura y Opciones</div>
             <div className="space-y-2 pt-1">
-              {!isWorkerMode && (
-                <button
-                  onClick={() => {
-                    setShowOptionsModal(false);
-                    onGoBack();
-                  }}
-                  className="w-full py-2.5 bg-[#181D2B] hover:bg-amber-500/10 hover:text-amber-300 rounded-lg text-xs font-bold text-[#8A93A8] border border-white/5 transition-all text-center cursor-pointer"
-                >
-                  Salir al Menú de Inicio
-                </button>
-              )}
+              <button 
+                onClick={() => {
+                  setShowOptionsModal(false);
+                  onGoBack();
+                }}
+                className="w-full py-2.5 bg-[#181D2B] hover:bg-amber-500/10 hover:text-amber-300 rounded-lg text-xs font-bold text-[#8A93A8] border border-white/5 transition-all text-center cursor-pointer"
+              >
+                Salir al Menú de Inicio
+              </button>
               <button 
                 onClick={() => setShowOptionsModal(false)}
                 className="w-full py-2.5 bg-[#181D2B] hover:bg-[#1F2638] rounded-lg text-xs font-bold text-[#8A93A8] transition-all text-center cursor-pointer"

@@ -17,6 +17,7 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
   const [colorPrincipal, setColorPrincipal] = useState(initialCfg.color_principal || '#C9822C');
   const [productos, setProductos] = useState<Product[]>(initialCfg.productos || []);
   const [vendedores, setVendedores] = useState<Seller[]>(initialCfg.vendedores || []);
+  const isNew = productos.length === 0;
 
   // Custom Logo and Palette Extractor states
   const [logoUrl, setLogoUrl] = useState(initialCfg.logo_url || '');
@@ -24,12 +25,6 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
   const [logoStyle, setLogoStyle] = useState<'modern' | 'shield' | 'retro' | 'minimal'>('modern');
   const [logoIcon, setLogoIcon] = useState('🏪');
   const [logoText, setLogoText] = useState(initialCfg.letra || 'M');
-
-  // AI Setup Generator states
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [aiGenerating, setAiGenerating] = useState(false);
-  const [aiMode, setAiMode] = useState<'descripcion' | 'sitio_web'>('descripcion');
-  const [websiteUrl, setWebsiteUrl] = useState('');
 
   // Modal forms states
   const [showProductModal, setShowProductModal] = useState(false);
@@ -45,6 +40,12 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
   const [newVndMeta, setNewVndMeta] = useState('');
 
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
+
+  // AI Generator Support States
+  const [aiMode, setAiMode] = useState<'descripcion' | 'sitio_web'>('descripcion');
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type });
@@ -323,7 +324,6 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
       setColorPrincipal(data.color_principal || '#00C896');
       setProductos(data.productos || []);
       setVendedores(data.vendedores || []);
-      
       triggerToast(`✓ ¡Demostración cargada para "${data.nombre}" de forma exitosa!`);
     } catch (e) {
       console.error(e);
@@ -471,8 +471,9 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
             </div>
           </div>
 
-          {/* AI Generator Card with direct client scraper support */}
-          <div className="bg-[#140E20] border border-purple-500/20 rounded-xl p-4 space-y-3.5 relative overflow-hidden">
+          {/* AI Generator Card - Only show during initial setup to keep UI clean for established businesses */}
+          {isNew && (
+            <div className="bg-[#140E20] border border-purple-500/20 rounded-xl p-4 space-y-3.5 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl pointer-events-none" />
             <div className="flex gap-2 items-center">
               <span className="text-sm animate-pulse">🪄</span>
@@ -547,6 +548,7 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
               </div>
             )}
           </div>
+        )}
 
           {/* Business Preview card */}
           <div className="border border-white/10 rounded-2xl p-4.5 flex items-center gap-3.5 bg-[#0B0E14] relative">

@@ -1,81 +1,20 @@
-# RoutePro Elite
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-**Sistema de Inteligencia Operativa para negocios de distribución.**
+# Run and deploy your AI Studio app
 
-Recupera el control del dinero que hoy no puedes ver.
+This contains everything you need to run your app locally.
 
----
+View your app in AI Studio: https://ai.studio/apps/1bf99ad5-de68-4e06-9b48-db31d5f8ac0e
 
-## ¿Qué es RoutePro Elite?
+## Run Locally
 
-RoutePro Elite no es una app de reparto.
+**Prerequisites:**  Node.js
 
-Es un sistema que convierte cada venta, cobro y entrega de tu operación en información visible y accionable — en tiempo real, desde el celular, sin internet.
 
-Diseñado para:
-
-- Tortillerías
-- Panaderías
-- Carnicerías
-- Distribuidoras
-- Purificadoras
-- Negocios de reparto local
-
----
-
-## El problema que resuelve
-
-- ¿Cuánto te deben tus clientes hoy?
-- ¿Dónde está tu repartidor y cuánto lleva cobrado?
-- ¿Cuánto producto se perdió sin registrar?
-- ¿Por qué la caja no cuadra al cierre del día?
-
-Si no puedes responder esas preguntas ahora mismo, tienes dinero que no puedes ver.
-
----
-
-## Stack técnico
-
-- **Frontend:** React 19 + TypeScript 5.8 + Vite 6
-- **Estilos:** Tailwind CSS 4
-- **Backend:** Firebase 12 (Auth + Firestore con persistencia offline)
-- **IA:** Google Gemini 2.0 Flash (configuración express, chat de ruta)
-- **Offline-first:** IndexedDB + Firestore persistent cache
-
----
-
-## Módulos
-
-| Módulo | Descripción |
-|---|---|
-| **Repartidor** | Registro de ventas en ruta, crédito, devoluciones y GPS |
-| **Mostrador** | Punto de venta por unidad o monto, tipos de cobro |
-| **Admin** | Dashboard en tiempo real, cierres, historial, métricas por vendedor |
-| **Configuración** | Catálogo, vendedores, metas diarias, PIN de acceso |
-
----
-
-## Desarrollo local
-
-```bash
-npm install
-cp .env.local.example .env.local   # agregar GEMINI_API_KEY y Firebase config
-npm run dev
-```
-
----
-
-## Arquitectura de colaboración
-
-Este proyecto se desarrolla con dos agentes de IA en paralelo:
-
-- **Silla A:** Claude (Anthropic)
-- **Silla B:** Gemini (Google AI Studio)
-
-La coordinación, decisiones técnicas y acuerdos entre sillas se documentan en [`PARLAMENTO.md`](./PARLAMENTO.md).
-
----
-
-> "Recupera el control del dinero que hoy no puedes ver."
->
-> — RoutePro Elite
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

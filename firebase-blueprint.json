@@ -100,6 +100,37 @@
         "status": { "type": "string" }
       },
       "required": ["vendedor_id", "vendedor_nombre", "fecha", "ventas_efectivo", "gastos_total", "liquido_final"]
+    },
+    "MysteryAudit": {
+      "title": "Auditoría de Mystery Shopper",
+      "description": "Registro de auditorías de servicio al cliente en ruta",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "vendedorId": { "type": "string" },
+        "vendedorNombre": { "type": "string" },
+        "fecha": { "type": "string" },
+        "auditor": { "type": "string" },
+        "checks": { "type": "object" },
+        "calificacion": { "type": "number" },
+        "notas": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "vendedorId", "vendedorNombre", "fecha", "auditor", "calificacion", "timestamp"]
+    },
+    "Abono": {
+      "title": "Abono / Pago de Deuda",
+      "description": "Registro de abonos de saldo o pago de cartera",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clienteNombre": { "type": "string" },
+        "monto": { "type": "number" },
+        "fecha": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "recibidoPor": { "type": "string" }
+      },
+      "required": ["id", "clienteNombre", "monto", "fecha", "timestamp"]
     }
   },
   "firestore": {
@@ -126,6 +157,14 @@
     "/historial_cierres/{cierreId}": {
       "schema": "HistorialCierre",
       "description": "Registro de cierres consolidados"
+    },
+    "/mystery_audits/{auditId}": {
+      "schema": "MysteryAudit",
+      "description": "Auditorías de calidad y cobro en ruta"
+    },
+    "/abonos/{abonoId}": {
+      "schema": "Abono",
+      "description": "Abonos y cobranzas del fiado"
     }
   }
 }

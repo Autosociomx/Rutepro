@@ -1,0 +1,40 @@
+{
+  "functions": [
+    {
+      "name": "read_repo_file",
+      "description": "Lee el contenido de un archivo desde el repositorio de RoutePro usando el puente RepoLink AI.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Ruta relativa del archivo (ej. src/App.tsx)"
+          }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "push_repo_file",
+      "description": "Crea o actualiza un archivo en el repositorio y realiza un commit/push automático vía RepoLink AI.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Ruta del archivo"
+          },
+          "content": {
+            "type": "string",
+            "description": "Nuevo contenido del archivo"
+          },
+          "message": {
+            "type": "string",
+            "description": "Mensaje de commit"
+          }
+        },
+        "required": ["path", "content", "message"]
+      }
+    }
+  ]
+}
