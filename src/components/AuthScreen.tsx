@@ -100,6 +100,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
   };
 
   const mapFirebaseError = (code: string): string => {
+    console.error('[RoutePro Auth] Firebase error code:', code);
     const map: Record<string, string> = {
       'auth/email-already-in-use': 'Este correo ya tiene una cuenta. Inicia sesión.',
       'auth/invalid-email': 'El formato del correo no es válido.',
@@ -108,9 +109,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
       'auth/wrong-password': 'Contraseña incorrecta.',
       'auth/invalid-credential': 'Correo o contraseña incorrectos.',
       'auth/too-many-requests': 'Demasiados intentos. Espera un momento.',
-      'auth/network-request-failed': 'Sin conexión. Revisa tu red.'
+      'auth/network-request-failed': 'Sin conexión. Revisa tu red.',
+      'auth/unauthorized-domain': 'Este dominio no está autorizado en Firebase. El administrador debe agregarlo en Firebase Console → Authentication → Authorized Domains.',
+      'auth/operation-not-allowed': 'El registro con correo no está habilitado. Actívalo en Firebase Console → Authentication → Sign-in providers.',
+      'auth/internal-error': 'Error interno de Firebase. Intenta de nuevo en unos segundos.',
+      'auth/configuration-not-found': 'Configuración de Firebase incompleta. Contacta al soporte.',
     };
-    return map[code] || 'Error al procesar. Intenta de nuevo.';
+    return map[code] || `Error (${code}). Intenta de nuevo.`;
   };
 
   return (
