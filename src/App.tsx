@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { db, handleFirestoreError, OperationType, auth } from './firebase';
 import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc, writeBatch, updateDoc, arrayUnion } from 'firebase/firestore';
@@ -8,16 +8,24 @@ import { syncLocalTransactions } from './utils/syncEngine';
 // presaved assets
 import { DEMOS, DemoConfig } from './data';
 
-// Modular Workspace Screens
+// Crítico: siempre en el bundle principal
 import { LandingScreen } from './components/LandingScreen';
-import { ConfigScreen } from './components/ConfigScreen';
-import { RepartidorScreen } from './components/RepartidorScreen';
-import { MostradorScreen } from './components/MostradorScreen';
-import { AdminScreen } from './components/AdminScreen';
-import { WelcomeModal } from './components/WelcomeModal';
 import { AuthScreen } from './components/AuthScreen';
-import { PaywallScreen } from './components/PaywallScreen';
-import { ContadorScreen } from './components/ContadorScreen';
+
+// Lazy: se cargan solo cuando el usuario los necesita
+const ConfigScreen = lazy(() => import('./components/ConfigScreen').then(m => ({ default: m.ConfigScreen })));
+const RepartidorScreen = lazy(() => import('./components/RepartidorScreen').then(m => ({ default: m.RepartidorScreen })));
+const MostradorScreen = lazy(() => import('./components/MostradorScreen').then(m => ({ default: m.MostradorScreen })));
+const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })));
+const WelcomeModal = lazy(() => import('./components/WelcomeModal').then(m => ({ default: m.WelcomeModal })));
+const PaywallScreen = lazy(() => import('./components/PaywallScreen').then(m => ({ default: m.PaywallScreen })));
+const ContadorScreen = lazy(() => import('./components/ContadorScreen').then(m => ({ default: m.ContadorScreen })));
+
+const ScreenLoader = () => (
+  <div className="min-h-screen bg-[#06080C] flex items-center justify-center">
+    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 animate-pulse" />
+  </div>
+);
 
 interface BillingInfo {
   status: 'trial' | 'active' | 'expired';
@@ -531,14 +539,16 @@ export default function App() {
   // Modo contador: si el usuario tiene rol=contador y no ha seleccionado un negocio
   if (userProfile?.rol === 'contador' && !contadorNegocioUid && !isDemoMode && !isWorkerMode) return (
     <>
-      <ContadorScreen
-        contadorUid={authUser?.uid || ''}
-        contadorNombre={userProfile.nombre || 'Contador'}
-        negociosGestionados={userProfile.negocios_gestionados || []}
-        onEnterNegocio={(uid) => setContadorNegocioUid(uid)}
-        onCerrarSesion={handleCerrarSesion}
-        triggerToast={triggerToast}
-      />
+      <Suspense fallback={<ScreenLoader />}>
+        <ContadorScreen
+          contadorUid={authUser?.uid || ''}
+          contadorNombre={userProfile.nombre || 'Contador'}
+          negociosGestionados={userProfile.negocios_gestionados || []}
+          onEnterNegocio={(uid) => setContadorNegocioUid(uid)}
+          onCerrarSesion={handleCerrarSesion}
+          triggerToast={triggerToast}
+        />
+      </Suspense>
       {errorToast && (
         <div className={`fixed bottom-6 left-5 right-5 p-3.5 rounded-xl z-50 shadow-md text-xs font-bold flex items-center gap-2 justify-center animate-fade-in ${errorToast.type === 'err' ? 'bg-red-950/80 border border-red-500/20 text-red-400' : 'bg-emerald-950/80 border border-emerald-500/20 text-[#00C896]'}`}>
           <span>{errorToast.type === 'err' ? '⚠️' : '✓'}</span>
@@ -551,13 +561,15 @@ export default function App() {
   // Paywall: trial expirado y sin plan activo
   if (billingInfo?.status === 'expired' && !isDemoMode && !isWorkerMode) return (
     <>
-      <PaywallScreen
-        ownerUid={ownerUid}
-        ownerEmail={authUser?.email ?? ''}
-        ownerNombre={billingInfo.owner_nombre}
-        trialEndedAt={billingInfo.trial_ends_at}
-        triggerToast={triggerToast}
-      />
+      <Suspense fallback={<ScreenLoader />}>
+        <PaywallScreen
+          ownerUid={ownerUid}
+          ownerEmail={authUser?.email ?? ''}
+          ownerNombre={billingInfo.owner_nombre}
+          trialEndedAt={billingInfo.trial_ends_at}
+          triggerToast={triggerToast}
+        />
+      </Suspense>
       {errorToast && (
         <div className={`fixed bottom-6 left-5 right-5 p-3.5 rounded-xl z-50 shadow-md text-xs font-bold flex items-center gap-2 justify-center animate-fade-in ${errorToast.type === 'err' ? 'bg-red-950/80 border border-red-500/20 text-red-400' : 'bg-emerald-950/80 border border-emerald-500/20 text-[#00C896]'}`}>
           <span>{errorToast.type === 'err' ? '⚠️' : '✓'}</span>
@@ -583,54 +595,56 @@ export default function App() {
         />
       )}
 
-      {currentScreen === 'configuracion' && (
-        <ConfigScreen 
-          initialCfg={cfg} 
-          onSave={handleSaveConfig} 
-          onGoBack={() => setCurrentScreen('landing')}
-        />
-      )}
+      <Suspense fallback={<ScreenLoader />}>
+        {currentScreen === 'configuracion' && (
+          <ConfigScreen
+            initialCfg={cfg}
+            onSave={handleSaveConfig}
+            onGoBack={() => setCurrentScreen('landing')}
+          />
+        )}
 
-      {currentScreen === 'repartidor' && (
-        <RepartidorScreen
-          cfg={cfg}
-          onGoBack={() => setCurrentScreen('landing')}
-          triggerToast={triggerToast}
-          isWorkerMode={isWorkerMode}
-          ownerUid={ownerUid}
-        />
-      )}
+        {currentScreen === 'repartidor' && (
+          <RepartidorScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+            isWorkerMode={isWorkerMode}
+            ownerUid={ownerUid}
+          />
+        )}
 
-      {currentScreen === 'mostrador' && (
-        <MostradorScreen
-          cfg={cfg}
-          onGoBack={() => setCurrentScreen('landing')}
-          triggerToast={triggerToast}
-          isWorkerMode={isWorkerMode}
-          ownerUid={ownerUid}
-        />
-      )}
+        {currentScreen === 'mostrador' && (
+          <MostradorScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+            isWorkerMode={isWorkerMode}
+            ownerUid={ownerUid}
+          />
+        )}
 
-      {currentScreen === 'admin' && (
-        <AdminScreen
-          cfg={cfg}
-          onGoBack={() => setCurrentScreen('landing')}
-          triggerToast={triggerToast}
-          onGoConfig={() => setCurrentScreen('configuracion')}
-          onCerrarSesion={handleCerrarSesion}
-          ownerEmail={authUser?.email ?? undefined}
-          ownerUid={ownerUid}
-          isContador={!!contadorNegocioUid}
-          onBackToContador={contadorNegocioUid ? () => setContadorNegocioUid(null) : undefined}
-        />
-      )}
+        {currentScreen === 'admin' && (
+          <AdminScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+            onGoConfig={() => setCurrentScreen('configuracion')}
+            onCerrarSesion={handleCerrarSesion}
+            ownerEmail={authUser?.email ?? undefined}
+            ownerUid={ownerUid}
+            isContador={!!contadorNegocioUid}
+            onBackToContador={contadorNegocioUid ? () => setContadorNegocioUid(null) : undefined}
+          />
+        )}
 
-      {currentScreen === 'landing' && showWelcome && (
-        <WelcomeModal
-          onLaunchDemo={(demo, name) => launchDemo(demo, name)}
-          onDismiss={() => setShowWelcome(false)}
-        />
-      )}
+        {currentScreen === 'landing' && showWelcome && (
+          <WelcomeModal
+            onLaunchDemo={(demo, name) => launchDemo(demo, name)}
+            onDismiss={() => setShowWelcome(false)}
+          />
+        )}
+      </Suspense>
 
       {currentScreen === 'demo' && (
         <div className="min-h-screen bg-[#06080C] text-[#EEF1F8] flex flex-col font-sans">
