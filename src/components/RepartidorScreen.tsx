@@ -20,9 +20,10 @@ interface RepartidorScreenProps {
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
   isWorkerMode?: boolean;
+  ownerUid: string;
 }
 
-export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast, isWorkerMode }) => {
+export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast, isWorkerMode, ownerUid }) => {
   const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
   const [activeTab, setActiveTab] = useState<'ped' | 'cli' | 'cierr' | 'ia'>('ped');
   const [horaIni, setHoraIni] = useState<Date | null>(null);
@@ -72,7 +73,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     // Fetch clients for this seller
     setLoadingClientes(true);
-    const qClients = query(collection(db, 'clientes'), where('vendedorId', '==', vnd.id));
+    const qClients = query(collection(db, 'negocios', ownerUid, 'clientes'), where('vendedorId', '==', vnd.id));
     getDocs(qClients)
       .then((snap) => {
         const loaded: Client[] = [];
@@ -170,7 +171,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     }
 
     // 2. Sincronización en segundo plano con la nube sin bloquear el flujo real del repartidor
-    setDoc(doc(db, 'devoluciones', devolId), newDevol)
+    setDoc(doc(db, 'negocios', ownerUid, 'devoluciones', devolId), newDevol)
       .then(() => {
         console.log(`✓ Merma ${devolId} sincronizada exitosamente con la nube.`);
       })
@@ -277,7 +278,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
       setMisClientes(prev => [newClientDoc, ...prev]);
 
-      setDoc(doc(db, 'clientes', finalClientId), newClientDoc)
+      setDoc(doc(db, 'negocios', ownerUid, 'clientes', finalClientId), newClientDoc)
         .then(() => {
           console.log(`✓ Master Client ${finalClientId} registered on cloud route database.`);
         })
@@ -314,6 +315,8 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         pr: item.pr,
         ic: item.icono
       })),
+      lat: finalClientLat,
+      lng: finalClientLng,
       timestamp: Date.now(),
       validado: true,
       sincronizado: false
@@ -364,7 +367,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       validado: true
     };
 
-    setDoc(doc(db, 'ventas', saleId), cleanDbData)
+    setDoc(doc(db, 'negocios', ownerUid, 'ventas', saleId), cleanDbData)
       .then(() => {
         console.log(`✓ Venta de ruta ${saleId} sincronizada with cloud.`);
         try {

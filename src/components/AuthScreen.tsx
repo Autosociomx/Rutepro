@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import {
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signInAnonymously
+  signInWithEmailAndPassword
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
 interface AuthScreenProps {
   onSuccess: () => void;
+  onDemoMode: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, triggerToast }) => {
   const [tab, setTab] = useState<'register' | 'login'>('register');
   const [loading, setLoading] = useState(false);
 
@@ -28,6 +28,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast 
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPwd, setLoginPwd] = useState('');
 
+  const [esContador, setEsContador] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [fieldErr, setFieldErr] = useState<string>('');
 
@@ -50,12 +51,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast 
       const uid = cred.user.uid;
       const now = Date.now();
 
+      const trialEndsAt = now + 14 * 24 * 60 * 60 * 1000; // 14 días
+
       await setDoc(doc(db, 'usuarios', uid), {
         uid,
         nombre: nombre.trim(),
         email: email.trim().toLowerCase(),
         telefono: telefono.trim(),
+        rol: esContador ? 'contador' : 'dueno',
         plan: 'trial',
+        trial_ends_at: trialEndsAt,
+        billing: { status: 'trial', trial_ends_at: trialEndsAt },
+        negocios_gestionados: esContador ? [] : null,
         aviso_privacidad: true,
         aviso_privacidad_ts: now,
         created_at: now
@@ -88,16 +95,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast 
     }
   };
 
-  const handleGuest = async () => {
-    setLoading(true);
-    try {
-      await signInAnonymously(auth);
-      onSuccess();
-    } catch (err) {
-      onSuccess(); // offline fallback
-    } finally {
-      setLoading(false);
-    }
+  const handleGuest = () => {
+    onDemoMode();
   };
 
   const mapFirebaseError = (code: string): string => {
@@ -216,6 +215,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast 
                 />
               </div>
 
+              {/* Tipo de cuenta */}
+              <div className="bg-[#111520] border border-white/5 rounded-xl p-3 space-y-2">
+                <p className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Tipo de cuenta</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setEsContador(false); clearErr(); }}
+                    className={`py-2 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${!esContador ? 'bg-amber-500 text-slate-950' : 'bg-[#181D2B] text-[#8A93A8] border border-white/5'}`}
+                  >
+                    🏪 Dueño de negocio
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEsContador(true); clearErr(); }}
+                    className={`py-2 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${esContador ? 'bg-amber-500 text-slate-950' : 'bg-[#181D2B] text-[#8A93A8] border border-white/5'}`}
+                  >
+                    🧾 Contador / Admin
+                  </button>
+                </div>
+                {esContador && (
+                  <p className="text-[9px] text-amber-400/80 leading-relaxed">
+                    Modo contador: gestiona múltiples negocios desde un solo panel.
+                  </p>
+                )}
+              </div>
+
               {/* Aviso de Privacidad — LFPDPPP */}
               <label className="flex items-start gap-2.5 cursor-pointer group">
                 <div className="relative mt-0.5 shrink-0">
@@ -302,16 +327,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, triggerToast 
           )}
         </div>
 
-        {/* Guest access footer */}
+        {/* Demo footer — sin Firebase */}
         <div className="px-6 pb-5 text-center">
-          <div className="border-t border-white/5 pt-4">
+          <div className="border-t border-white/5 pt-4 space-y-1">
             <button
               onClick={handleGuest}
-              disabled={loading}
-              className="text-[10px] text-[#3E4A60] hover:text-[#8A93A8] transition-colors cursor-pointer disabled:opacity-40 underline underline-offset-2"
+              className="text-[10px] text-[#3E4A60] hover:text-[#8A93A8] transition-colors cursor-pointer underline underline-offset-2"
             >
-              Continuar sin cuenta (modo demo)
+              Explorar demo interactiva (sin guardar datos)
             </button>
+            <p className="text-[9px] text-[#1E2535]">Los datos del demo no se sincronizan ni almacenan.</p>
           </div>
         </div>
       </div>

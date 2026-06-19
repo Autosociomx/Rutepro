@@ -1,20 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { db, handleFirestoreError, OperationType, auth } from './firebase';
-import { signInAnonymously } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
+import { doc, onSnapshot, setDoc, deleteDoc, writeBatch, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
 import { syncLocalTransactions } from './utils/syncEngine';
 
 // presaved assets
 import { DEMOS, DemoConfig } from './data';
 
-// Modular Workspace Screens
+// Crítico: siempre en el bundle principal
 import { LandingScreen } from './components/LandingScreen';
-import { ConfigScreen } from './components/ConfigScreen';
-import { RepartidorScreen } from './components/RepartidorScreen';
-import { MostradorScreen } from './components/MostradorScreen';
-import { AdminScreen } from './components/AdminScreen';
-import { WelcomeModal } from './components/WelcomeModal';
+import { AuthScreen } from './components/AuthScreen';
+
+// Lazy: se cargan solo cuando el usuario los necesita
+const ConfigScreen = lazy(() => import('./components/ConfigScreen').then(m => ({ default: m.ConfigScreen })));
+const RepartidorScreen = lazy(() => import('./components/RepartidorScreen').then(m => ({ default: m.RepartidorScreen })));
+const MostradorScreen = lazy(() => import('./components/MostradorScreen').then(m => ({ default: m.MostradorScreen })));
+const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })));
+const WelcomeModal = lazy(() => import('./components/WelcomeModal').then(m => ({ default: m.WelcomeModal })));
+const PaywallScreen = lazy(() => import('./components/PaywallScreen').then(m => ({ default: m.PaywallScreen })));
+const ContadorScreen = lazy(() => import('./components/ContadorScreen').then(m => ({ default: m.ContadorScreen })));
+
+const ScreenLoader = () => (
+  <div className="min-h-screen bg-[#06080C] flex items-center justify-center">
+    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 animate-pulse" />
+  </div>
+);
+
+interface BillingInfo {
+  status: 'trial' | 'active' | 'expired';
+  trial_ends_at?: number;
+  days_remaining?: number;
+  owner_nombre?: string;
+}
+
+interface UserProfile {
+  rol?: 'dueno' | 'contador';
+  nombre?: string;
+  negocios_gestionados?: string[];
+}
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>(() => {
@@ -26,22 +50,16 @@ export default function App() {
     return m === 'repartidor' || m === 'mostrador';
   })();
   const [cfg, setCfg] = useState<AppConfig>({
-    nombre: 'Tostadas Nayaritas',
-    letra: 'TN',
-    subtitulo: 'Tostadas raspadas, cevicheras, salsas',
-    color_principal: '#D97706',
+    nombre: 'Mi Negocio',
+    letra: 'MN',
+    subtitulo: 'Configura tu negocio en Ajustes ⚙️',
+    color_principal: '#C9912A',
     productos: [
-      { id: 'NY1', icono: '🫓', nombre: 'Tostadas Raspadas (Fam.)', precio: 3800, unidad: 'pac' },
-      { id: 'NY2', icono: '🌮', nombre: 'Tostadas Cevicheras Crujientes', precio: 3500, unidad: 'pac' },
-      { id: 'NY3', icono: '🌽', nombre: 'Tortilla de Maíz kg', precio: 2400, unidad: 'kg' },
-      { id: 'NY4', icono: '🌶️', nombre: 'Salsa Picante Huichol', precio: 1900, unidad: 'pza' },
-      { id: 'NY5', icono: '🧀', nombre: 'Queso Cotija Seco kg', precio: 9500, unidad: 'kg' },
-      { id: 'NY6', icono: '📦', nombre: 'Caja Grande Deshidratadas', precio: 18000, unidad: 'caja' }
+      { id: 'P1', icono: '📦', nombre: 'Producto 1', precio: 1000, unidad: 'pza' },
+      { id: 'P2', icono: '📦', nombre: 'Producto 2', precio: 2000, unidad: 'pza' },
     ],
     vendedores: [
-      { id: 'V_NY1', nombre: 'Juan Pablo Díaz', rol: 'repartidor', ruta: 'Ruta Costa y Huajicori' },
-      { id: 'V_NY2', nombre: 'Alondra Bañales', rol: 'repartidor', ruta: 'Ruta Miramar y San Blas' },
-      { id: 'V_NY3', nombre: 'Estela Martínez', rol: 'cajero', ruta: 'Mostrador Tepic Centro' }
+      { id: 'V1', nombre: 'Repartidor 1', rol: 'repartidor', ruta: 'Ruta A' },
     ],
     logo_url: ''
   });
@@ -53,7 +71,14 @@ export default function App() {
     if (m === 'repartidor' || m === 'mostrador') return false;
     return !localStorage.getItem('rp_welcome_seen');
   });
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
+  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [contadorNegocioUid, setContadorNegocioUid] = useState<string | null>(null);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setErrorToast({ message: msg, type });
@@ -96,9 +121,17 @@ export default function App() {
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
 
+  // Demo: sin UID → todos los guards de Firestore lo bloquean (if !ownerUid return)
+  const ownerUid = isDemoMode
+    ? ''
+    : isWorkerMode
+      ? (new URLSearchParams(window.location.search).get('uid') || '')
+      : contadorNegocioUid || (authUser?.uid || '');
+
   // Real-time Firestore synchronization on mount for the corporate setup
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'config', 'global'), (docSnap) => {
+    if (!ownerUid) return;
+    const unsub = onSnapshot(doc(db, 'negocios', ownerUid, 'config', 'global'), (docSnap) => {
       if (docSnap.exists()) {
         const cloudData = docSnap.data() as any;
         setCfg(cloudData);
@@ -118,26 +151,20 @@ export default function App() {
           }
         } else {
           const defaultNayaritas: AppConfig = {
-            nombre: 'Tostadas Nayaritas',
-            letra: 'TN',
-            subtitulo: 'Tostadas raspadas, cevicheras, salsas',
-            color_principal: '#D97706',
+            nombre: 'Mi Negocio',
+            letra: 'MN',
+            subtitulo: 'Configura tu negocio en Ajustes ⚙️',
+            color_principal: '#C9912A',
             productos: [
-              { id: 'NY1', icono: '🫓', nombre: 'Tostadas Raspadas (Fam.)', precio: 3800, unidad: 'pac' },
-              { id: 'NY2', icono: '🌮', nombre: 'Tostadas Cevicheras Crujientes', precio: 3500, unidad: 'pac' },
-              { id: 'NY3', icono: '🌽', nombre: 'Tortilla de Maíz kg', precio: 2400, unidad: 'kg' },
-              { id: 'NY4', icono: '🌶️', nombre: 'Salsa Picante Huichol', precio: 1900, unidad: 'pza' },
-              { id: 'NY5', icono: '🧀', nombre: 'Queso Cotija Seco kg', precio: 9500, unidad: 'kg' },
-              { id: 'NY6', icono: '📦', nombre: 'Caja Grande Deshidratadas', precio: 18000, unidad: 'caja' }
+              { id: 'P1', icono: '📦', nombre: 'Producto 1', precio: 1000, unidad: 'pza' },
+              { id: 'P2', icono: '📦', nombre: 'Producto 2', precio: 2000, unidad: 'pza' },
             ],
             vendedores: [
-              { id: 'V_NY1', nombre: 'Juan Pablo Díaz', rol: 'repartidor', ruta: 'Ruta Costa y Huajicori' },
-              { id: 'V_NY2', nombre: 'Alondra Bañales', rol: 'repartidor', ruta: 'Ruta Miramar y San Blas' },
-              { id: 'V_NY3', nombre: 'Estela Martínez', rol: 'cajero', ruta: 'Mostrador Tepic Centro' }
+              { id: 'V1', nombre: 'Repartidor 1', rol: 'repartidor', ruta: 'Ruta A' },
             ],
             logo_url: ''
           };
-          setDoc(doc(db, 'config', 'global'), defaultNayaritas)
+          setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), defaultNayaritas)
             .then(() => console.log('Successfully auto-seeded blank database with Tostadas Nayaritas'))
             .catch(e => console.warn('Could not auto-seed cloud config:', e));
           localStorage.setItem('rp_cfg', JSON.stringify(defaultNayaritas));
@@ -150,27 +177,108 @@ export default function App() {
     });
 
     return () => unsub();
+  }, [ownerUid]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      setAuthReady(true);
+      if (!user && isWorkerMode) {
+        signInAnonymously(auth).catch(() => {});
+      }
+    });
+    return unsub;
   }, []);
 
-  // Perform Firebase Anonymous sign-in on boot to secure writes in Firestore
+  // Maneja ?join={ownerUid} — vincula al contador con el negocio del dueño
   useEffect(() => {
-    signInAnonymously(auth)
-      .then((userCred) => {
-        console.log('Signed in anonymously as:', userCred.user.uid);
+    const joinUid = new URLSearchParams(window.location.search).get('join');
+    if (!joinUid || !authUser?.uid) return;
+
+    const contadorUid = authUser.uid;
+    const accesoRef = doc(db, 'negocios', joinUid, 'acceso', contadorUid);
+    const usuarioRef = doc(db, 'usuarios', contadorUid);
+
+    setDoc(accesoRef, {
+      nombre: userProfile?.nombre || 'Contador',
+      rol: 'contador',
+      addedAt: Date.now(),
+    }).then(() =>
+      updateDoc(usuarioRef, {
+        negocios_gestionados: arrayUnion(joinUid),
+        rol: 'contador',
       })
-      .catch((err) => {
-        console.warn('Anonymous sign-in failed or resumed:', err);
+    ).then(() => {
+      window.history.replaceState({}, '', window.location.pathname);
+      triggerToast('✓ Negocio vinculado exitosamente');
+    }).catch(e => console.error('join error:', e));
+  }, [authUser?.uid]);
+
+  // Billing / subscription gate — reads usuarios/{uid} for plan status
+  useEffect(() => {
+    if (isDemoMode || isWorkerMode) {
+      setBillingLoading(false);
+      return;
+    }
+    if (!authUser?.uid) {
+      setBillingLoading(false);
+      return;
+    }
+    const unsub = onSnapshot(doc(db, 'usuarios', authUser.uid), (snap) => {
+      if (!snap.exists()) {
+        setBillingInfo({ status: 'active' });
+        setBillingLoading(false);
+        return;
+      }
+      const d = snap.data() as any;
+
+      // Perfil de usuario (rol + negocios gestionados)
+      setUserProfile({
+        rol: d.rol,
+        nombre: d.nombre,
+        negocios_gestionados: d.negocios_gestionados || [],
       });
-  }, []);
+
+      const trialEndsAt: number | undefined = d.trial_ends_at ?? d.billing?.trial_ends_at;
+      const planStatus: string = d.billing?.status ?? d.plan ?? 'trial';
+
+      let status: BillingInfo['status'];
+      if (planStatus === 'active') {
+        status = 'active';
+      } else if (!trialEndsAt) {
+        // Usuarios anteriores sin trial_ends_at → acceso completo (retrocompat)
+        status = 'active';
+      } else if (Date.now() > trialEndsAt) {
+        status = 'expired';
+      } else {
+        status = 'trial';
+      }
+
+      const daysRemaining = trialEndsAt
+        ? Math.max(0, Math.ceil((trialEndsAt - Date.now()) / (1000 * 60 * 60 * 24)))
+        : undefined;
+
+      setBillingInfo({
+        status,
+        trial_ends_at: trialEndsAt,
+        days_remaining: daysRemaining,
+        owner_nombre: d.nombre,
+      });
+      setBillingLoading(false);
+    });
+    return unsub;
+  }, [authUser?.uid, isDemoMode, isWorkerMode]);
 
   // Setup real-time background sync engine for offline operations
   useEffect(() => {
+    if (!ownerUid) return;
+
     // 1. Initial sync attempts
-    syncLocalTransactions().catch(e => console.warn('Offline sync background error:', e));
+    syncLocalTransactions(ownerUid).catch(e => console.warn('Offline sync background error:', e));
 
     // 2. Sync whenever browser network state changes to online
     const handleOnline = () => {
-      syncLocalTransactions().then((res) => {
+      syncLocalTransactions(ownerUid).then((res) => {
         if (res.ventasSincronizadas > 0 || res.devolucionesSincronizadas > 0) {
           triggerToast(`✓ ¡Conexión restablecida! Sincronizados: ${res.ventasSincronizadas} ventas y ${res.devolucionesSincronizadas} devoluciones.`);
         }
@@ -180,7 +288,7 @@ export default function App() {
 
     // 3. Periodic execution of syncing queue (every 12 seconds)
     const interval = setInterval(() => {
-      syncLocalTransactions().then((res) => {
+      syncLocalTransactions(ownerUid).then((res) => {
         if (res.ventasSincronizadas > 0 || res.devolucionesSincronizadas > 0) {
           triggerToast(`✓ Sincronización automática: ${res.ventasSincronizadas} ventas y ${res.devolucionesSincronizadas} mermas subidas.`);
         }
@@ -191,15 +299,17 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
       clearInterval(interval);
     };
-  }, []);
+  }, [ownerUid]);
 
   const handleSaveConfig = async (newCfg: AppConfig) => {
     let cloudSaved = false;
-    try {
-      await setDoc(doc(db, 'config', 'global'), newCfg);
-      cloudSaved = true;
-    } catch (e) {
-      console.warn('Silent fallback activated. Firestore save failed, using local offline persistence:', e);
+    if (ownerUid) {
+      try {
+        await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), newCfg);
+        cloudSaved = true;
+      } catch (e) {
+        console.warn('Silent fallback activated. Firestore save failed, using local offline persistence:', e);
+      }
     }
 
     try {
@@ -208,7 +318,9 @@ export default function App() {
       if (newCfg.color_principal) {
         applyThemeColor(newCfg.color_principal);
       }
-      if (cloudSaved) {
+      if (isDemoMode) {
+        triggerToast('✓ Configuración guardada (solo en este dispositivo — modo demo)');
+      } else if (cloudSaved) {
         triggerToast('✓ Configuración guardada en la nube');
       } else {
         triggerToast('✓ Configuración guardada localmente (Modo sin conexión)', 'ok');
@@ -237,11 +349,13 @@ export default function App() {
     };
 
     let cloudSaved = false;
-    try {
-      await setDoc(doc(db, 'config', 'global'), demoConfig);
-      cloudSaved = true;
-    } catch (e) {
-      console.warn('Silent database write failed, running demo in high-res offline cache mode:', e);
+    if (ownerUid) {
+      try {
+        await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), demoConfig);
+        cloudSaved = true;
+      } catch (e) {
+        console.warn('Silent database write failed, running demo in high-res offline cache mode:', e);
+      }
     }
 
     try {
@@ -376,21 +490,94 @@ export default function App() {
       
       setCfg(nextCfg);
       applyThemeColor(nextCfg.color_principal || '#C9912A');
-      setShowWelcome(true);
       setCurrentScreen('landing');
-      triggerToast('Sesión de demo finalizada, normalidad restaurada');
 
-      // 3. Silently try to reset the shared database configuration layout
-      try {
-        await setDoc(doc(db, 'config', 'global'), nextCfg);
-      } catch (dbErr) {
-        console.log('[Info] Configuración remota persistida por otros usuarios del sandbox.', dbErr);
+      if (isDemoMode) {
+        // En demo: volver a la pantalla de registro
+        setIsDemoMode(false);
+        setShowWelcome(false);
+        triggerToast('Demo finalizada — crea tu cuenta para guardar datos reales');
+      } else {
+        setShowWelcome(true);
+        triggerToast('Sesión finalizada correctamente');
+        // Reiniciar configuración en la nube
+        if (ownerUid) {
+          try {
+            await setDoc(doc(db, 'negocios', ownerUid, 'config', 'global'), nextCfg);
+          } catch (dbErr) {
+            console.log('[Info] Configuración remota no actualizada.', dbErr);
+          }
+        }
       }
     } catch (err) {
       console.error(err);
       triggerToast('Error al reiniciar sesión local', 'err');
     }
   };
+
+  if (!authReady) return (
+    <div className="min-h-screen bg-[#06080C] flex items-center justify-center">
+      <div className="text-amber-400 animate-pulse text-sm font-bold">Cargando...</div>
+    </div>
+  );
+
+  if (!authUser && !isWorkerMode && !isDemoMode) return (
+    <AuthScreen
+      onSuccess={() => {}}
+      onDemoMode={() => { setIsDemoMode(true); setShowWelcome(true); }}
+      triggerToast={triggerToast}
+    />
+  );
+
+  // Esperar datos de suscripción antes de mostrar la app (evita parpadeos)
+  if (billingLoading && !isDemoMode && !isWorkerMode) return (
+    <div className="min-h-screen bg-[#06080C] flex items-center justify-center">
+      <div className="text-amber-400 animate-pulse text-sm font-bold">Cargando...</div>
+    </div>
+  );
+
+  // Modo contador: si el usuario tiene rol=contador y no ha seleccionado un negocio
+  if (userProfile?.rol === 'contador' && !contadorNegocioUid && !isDemoMode && !isWorkerMode) return (
+    <>
+      <Suspense fallback={<ScreenLoader />}>
+        <ContadorScreen
+          contadorUid={authUser?.uid || ''}
+          contadorNombre={userProfile.nombre || 'Contador'}
+          negociosGestionados={userProfile.negocios_gestionados || []}
+          onEnterNegocio={(uid) => setContadorNegocioUid(uid)}
+          onCerrarSesion={handleCerrarSesion}
+          triggerToast={triggerToast}
+        />
+      </Suspense>
+      {errorToast && (
+        <div className={`fixed bottom-6 left-5 right-5 p-3.5 rounded-xl z-50 shadow-md text-xs font-bold flex items-center gap-2 justify-center animate-fade-in ${errorToast.type === 'err' ? 'bg-red-950/80 border border-red-500/20 text-red-400' : 'bg-emerald-950/80 border border-emerald-500/20 text-[#00C896]'}`}>
+          <span>{errorToast.type === 'err' ? '⚠️' : '✓'}</span>
+          <span>{errorToast.message}</span>
+        </div>
+      )}
+    </>
+  );
+
+  // Paywall: trial expirado y sin plan activo
+  if (billingInfo?.status === 'expired' && !isDemoMode && !isWorkerMode) return (
+    <>
+      <Suspense fallback={<ScreenLoader />}>
+        <PaywallScreen
+          ownerUid={ownerUid}
+          ownerEmail={authUser?.email ?? ''}
+          ownerNombre={billingInfo.owner_nombre}
+          trialEndedAt={billingInfo.trial_ends_at}
+          triggerToast={triggerToast}
+        />
+      </Suspense>
+      {errorToast && (
+        <div className={`fixed bottom-6 left-5 right-5 p-3.5 rounded-xl z-50 shadow-md text-xs font-bold flex items-center gap-2 justify-center animate-fade-in ${errorToast.type === 'err' ? 'bg-red-950/80 border border-red-500/20 text-red-400' : 'bg-emerald-950/80 border border-emerald-500/20 text-[#00C896]'}`}>
+          <span>{errorToast.type === 'err' ? '⚠️' : '✓'}</span>
+          <span>{errorToast.message}</span>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="bg-[#06080C] min-h-screen">
@@ -402,51 +589,62 @@ export default function App() {
           onNuevaDemo={handleNuevaDemo}
           onSaveConfig={handleSaveConfig}
           triggerToast={triggerToast}
+          ownerUid={ownerUid}
+          isDemoMode={isDemoMode}
+          onRegistrarse={() => { setIsDemoMode(false); setShowWelcome(false); }}
         />
       )}
 
-      {currentScreen === 'configuracion' && (
-        <ConfigScreen 
-          initialCfg={cfg} 
-          onSave={handleSaveConfig} 
-          onGoBack={() => setCurrentScreen('landing')}
-        />
-      )}
+      <Suspense fallback={<ScreenLoader />}>
+        {currentScreen === 'configuracion' && (
+          <ConfigScreen
+            initialCfg={cfg}
+            onSave={handleSaveConfig}
+            onGoBack={() => setCurrentScreen('landing')}
+          />
+        )}
 
-      {currentScreen === 'repartidor' && (
-        <RepartidorScreen
-          cfg={cfg}
-          onGoBack={() => setCurrentScreen('landing')}
-          triggerToast={triggerToast}
-          isWorkerMode={isWorkerMode}
-        />
-      )}
+        {currentScreen === 'repartidor' && (
+          <RepartidorScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+            isWorkerMode={isWorkerMode}
+            ownerUid={ownerUid}
+          />
+        )}
 
-      {currentScreen === 'mostrador' && (
-        <MostradorScreen
-          cfg={cfg}
-          onGoBack={() => setCurrentScreen('landing')}
-          triggerToast={triggerToast}
-          isWorkerMode={isWorkerMode}
-        />
-      )}
+        {currentScreen === 'mostrador' && (
+          <MostradorScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+            isWorkerMode={isWorkerMode}
+            ownerUid={ownerUid}
+          />
+        )}
 
-      {currentScreen === 'admin' && (
-        <AdminScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
-          triggerToast={triggerToast}
-          onGoConfig={() => setCurrentScreen('configuracion')}
-          onCerrarSesion={handleCerrarSesion}
-        />
-      )}
+        {currentScreen === 'admin' && (
+          <AdminScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+            onGoConfig={() => setCurrentScreen('configuracion')}
+            onCerrarSesion={handleCerrarSesion}
+            ownerEmail={authUser?.email ?? undefined}
+            ownerUid={ownerUid}
+            isContador={!!contadorNegocioUid}
+            onBackToContador={contadorNegocioUid ? () => setContadorNegocioUid(null) : undefined}
+          />
+        )}
 
-      {currentScreen === 'landing' && showWelcome && (
-        <WelcomeModal
-          onLaunchDemo={(demo, name) => launchDemo(demo, name)}
-          onDismiss={() => setShowWelcome(false)}
-        />
-      )}
+        {currentScreen === 'landing' && showWelcome && (
+          <WelcomeModal
+            onLaunchDemo={(demo, name) => launchDemo(demo, name)}
+            onDismiss={() => setShowWelcome(false)}
+          />
+        )}
+      </Suspense>
 
       {currentScreen === 'demo' && (
         <div className="min-h-screen bg-[#06080C] text-[#EEF1F8] flex flex-col font-sans">
@@ -518,6 +716,15 @@ export default function App() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* TRIAL BANNER */}
+      {billingInfo?.status === 'trial' && !isDemoMode && !isWorkerMode && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-[#06080C] text-center py-1.5 px-4 text-[10px] font-extrabold tracking-wide">
+          {billingInfo.days_remaining === 0
+            ? '⚠ Tu prueba vence hoy — activa tu plan para no perder acceso'
+            : `Prueba gratis: ${billingInfo.days_remaining} día${billingInfo.days_remaining !== 1 ? 's' : ''} restante${billingInfo.days_remaining !== 1 ? 's' : ''}`}
         </div>
       )}
 

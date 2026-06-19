@@ -9,9 +9,13 @@ interface AdminScreenProps {
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
   onGoConfig?: () => void;
   onCerrarSesion?: () => void;
+  ownerEmail?: string;
+  ownerUid: string;
+  isContador?: boolean;
+  onBackToContador?: () => void;
 }
 
-export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion }) => {
+export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion, ownerEmail, ownerUid, isContador, onBackToContador }) => {
   // Navigation & Tabs consolidated under Administrative Settings Gear, while main screen is AI Chat Dashboard!
   const [showConfigMenu, setShowConfigMenu] = useState(false);
   const [ventas, setVentas] = useState<Venta[]>([]);
@@ -21,7 +25,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   const [dbClientes, setDbClientes] = useState<Client[]>([]);
 
   // Detailed modal cards state
-  const [selectedCardDetails, setSelectedCardDetails] = useState<'ventas' | 'clientes' | 'saldo' | 'rutas' | null>(null);
+  const [selectedCardDetails, setSelectedCardDetails] = useState<'ventas' | 'clientes' | 'saldo' | 'rutas' | 'mystery' | null>(null);
   
   // Structured Route / Clients Sequence Map Tracking
   const [clientSubTab, setClientSubTab] = useState<'rutas' | 'cartera' | 'metas'>('rutas');
@@ -43,6 +47,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // Administrative control states
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [isSendingReport, setIsSendingReport] = useState(false);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
 
@@ -245,7 +250,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 1. Subscribe to Sales Collection in real-time
   useEffect(() => {
-    const q = query(collection(db, 'ventas'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'negocios', ownerUid, 'ventas'), orderBy('timestamp', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const salesFromDb: Venta[] = [];
       snapshot.forEach((docSnap) => {
@@ -310,7 +315,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 2. Subscribe to Mermas (Devoluciones)
   useEffect(() => {
-    const q = query(collection(db, 'devoluciones'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'negocios', ownerUid, 'devoluciones'), orderBy('timestamp', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const devolsFromDb: Devolucion[] = [];
       snapshot.forEach((docSnap) => {
@@ -360,7 +365,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 3. Subscribe to Mystery Audits
   useEffect(() => {
-    const q = query(collection(db, 'mystery_audits'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'negocios', ownerUid, 'mystery_audits'), orderBy('timestamp', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const auditsFromDb: MysteryAudit[] = [];
       snapshot.forEach((docSnap) => {
@@ -390,7 +395,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 4. Subscribe to Payments (Abonos) Sincronizados
   useEffect(() => {
-    const q = query(collection(db, 'abonos'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'negocios', ownerUid, 'abonos'), orderBy('timestamp', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const paymentsList: Abono[] = [];
       snapshot.forEach((docSnap) => {
@@ -417,7 +422,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 5. Subscribe to Master Clients Collection
   useEffect(() => {
-    const q = query(collection(db, 'clientes'));
+    const q = query(collection(db, 'negocios', ownerUid, 'clientes'));
     const unsub = onSnapshot(q, (snapshot) => {
       const clientsList: Client[] = [];
       snapshot.forEach((docSnap) => {
@@ -536,6 +541,52 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   const topProducts = getProductPopularity();
   const maxProductRevenue = topProducts.length > 0 ? topProducts[0].totalCents : 1;
 
+  const handleSendReport = async () => {
+    if (!ownerEmail) {
+      triggerToast('Inicia sesión con email para recibir reportes por correo', 'err');
+      return;
+    }
+    setIsSendingReport(true);
+    try {
+      const today = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const efectivo = ventas.filter(v => v.tipoCobro === 'efectivo').reduce((s, v) => s + (v.monto || 0), 0);
+      const credito = ventas.filter(v => v.tipoCobro === 'crédito').reduce((s, v) => s + (v.monto || 0), 0);
+      const mermas = devoluciones.reduce((s, d) => s + (d.monto || 0), 0);
+      const byVendedor: Record<string, { nombre: string; total: number }> = {};
+      ventas.forEach(v => {
+        if (!byVendedor[v.vendedorId]) byVendedor[v.vendedorId] = { nombre: v.vendedorNombre || v.vendedorId, total: 0 };
+        byVendedor[v.vendedorId].total += v.monto || 0;
+      });
+      const topVendedor = Object.values(byVendedor).sort((a, b) => b.total - a.total)[0]?.nombre || '—';
+      const res = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: ownerEmail,
+          negocio: cfg.nombre,
+          fecha: today,
+          totalVentas: totalCobrado,
+          efectivo,
+          credito,
+          mermas,
+          topVendedor,
+          cuentasPorCobrar: totalClientsWithDebtCount,
+          totalDeuda: totalPendingBalanceCents,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        triggerToast(`✓ Resumen enviado a ${ownerEmail}`);
+      } else {
+        triggerToast(data.error || 'Error al enviar el reporte', 'err');
+      }
+    } catch {
+      triggerToast('Error de conexión al enviar el reporte', 'err');
+    } finally {
+      setIsSendingReport(false);
+    }
+  };
+
   // AI execution routine sending context questions
   const handleAskAI = async (textOver?: string) => {
     const qStr = textOver || chatInp.trim();
@@ -583,23 +634,23 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       setMysteryAudits([]);
       setAbonos([]);
 
-      const vSnap = await getDocs(query(collection(db, 'ventas')));
-      const dSnap = await getDocs(query(collection(db, 'devoluciones')));
-      const mSnap = await getDocs(query(collection(db, 'mystery_audits')));
-      const abSnap = await getDocs(query(collection(db, 'abonos')));
+      const vSnap = await getDocs(query(collection(db, 'negocios', ownerUid, 'ventas')));
+      const dSnap = await getDocs(query(collection(db, 'negocios', ownerUid, 'devoluciones')));
+      const mSnap = await getDocs(query(collection(db, 'negocios', ownerUid, 'mystery_audits')));
+      const abSnap = await getDocs(query(collection(db, 'negocios', ownerUid, 'abonos')));
 
       const batch = writeBatch(db);
       vSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'ventas', docSnap.id));
+        batch.delete(doc(db, 'negocios', ownerUid, 'ventas', docSnap.id));
       });
       dSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'devoluciones', docSnap.id));
+        batch.delete(doc(db, 'negocios', ownerUid, 'devoluciones', docSnap.id));
       });
       mSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'mystery_audits', docSnap.id));
+        batch.delete(doc(db, 'negocios', ownerUid, 'mystery_audits', docSnap.id));
       });
       abSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'abonos', docSnap.id));
+        batch.delete(doc(db, 'negocios', ownerUid, 'abonos', docSnap.id));
       });
 
       await batch.commit();
@@ -644,7 +695,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     };
 
     try {
-      await setDoc(doc(db, 'abonos', abonoId), abonoObj);
+      await setDoc(doc(db, 'negocios', ownerUid, 'abonos', abonoId), abonoObj);
       
       // Update local storage payment lists immediately to avoid stale interface
       const prevAbonos = JSON.parse(localStorage.getItem('rp_abonos') || '[]');
@@ -712,7 +763,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     };
 
     try {
-      await setDoc(doc(db, 'mystery_audits', auditId), auditObj);
+      await setDoc(doc(db, 'negocios', ownerUid, 'mystery_audits', auditId), auditObj);
       const prev = JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]');
       localStorage.setItem('rp_mystery_audits', JSON.stringify([auditObj, ...prev]));
       
@@ -773,16 +824,24 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
         </div>
 
         <div className="flex items-center gap-1.5">
+          {isContador && onBackToContador && (
+            <button
+              onClick={onBackToContador}
+              className="h-9 px-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-all text-[10px] font-bold cursor-pointer"
+            >
+              ← Mis negocios
+            </button>
+          )}
           {/* Action Menu button */}
-          <button 
+          <button
             onClick={() => setShowConfigMenu(!showConfigMenu)}
             className="w-9 h-9 rounded-lg bg-[#111520] hover:bg-[#1C2235] border border-white/5 flex items-center justify-center text-gray-300 hover:text-white transition-all text-xs cursor-pointer relative"
           >
             ⚙️
           </button>
-          
-          <button 
-            onClick={onGoBack} 
+
+          <button
+            onClick={onGoBack}
             className="w-9 h-9 rounded-lg bg-[#111520] hover:bg-slate-800 border border-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-all text-xs cursor-pointer"
           >
             ←
@@ -808,13 +867,10 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             >
               🚚 Flotilla y Rutas
             </button>
-            <button 
+            <button
               onClick={() => {
                 setShowConfigMenu(false);
-                if (cfg.vendedores.length > 0) {
-                  setMSelectedSellerId(cfg.vendedores[0].id);
-                }
-                setShowMysteryModal(true);
+                setSelectedCardDetails('mystery');
               }}
               className="p-3 bg-[#111520] border border-white/5 rounded-xl hover:bg-[#181D2B] text-left text-xs text-amber-300 cursor-pointer transition-all"
             >
@@ -829,7 +885,17 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             >
               🛠️ Cambiar Catálogo / Precios
             </button>
-            <button 
+            <button
+              onClick={() => {
+                setShowConfigMenu(false);
+                handleSendReport();
+              }}
+              disabled={isSendingReport}
+              className="p-3 bg-[#111520] border border-amber-500/20 rounded-xl hover:bg-[#181D2B] text-left text-xs text-amber-300 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isSendingReport ? '⏳ Enviando...' : '📧 Resumen por Correo'}
+            </button>
+            <button
               onClick={() => {
                 setShowConfigMenu(false);
                 setShowWipeConfirm(true);
@@ -838,9 +904,25 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             >
               🧹 Reiniciar Balance a $0
             </button>
+            {!isContador && (
+              <button
+                onClick={() => {
+                  setShowConfigMenu(false);
+                  const link = `${window.location.origin}?join=${ownerUid}`;
+                  navigator.clipboard.writeText(link).then(() => {
+                    triggerToast('✓ Enlace de acceso copiado. Envíalo a tu contador.', 'ok');
+                  }).catch(() => {
+                    triggerToast('No se pudo copiar el enlace', 'err');
+                  });
+                }}
+                className="p-3 bg-[#111520] border border-white/5 rounded-xl hover:bg-[#181D2B] text-left text-xs text-sky-400 cursor-pointer transition-all"
+              >
+                🔗 Compartir acceso con contador
+              </button>
+            )}
           </div>
 
-          <button 
+          <button
             onClick={() => {
               setShowConfigMenu(false);
               setShowExitConfirm(true);
@@ -1049,6 +1131,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                   {selectedCardDetails === 'ventas' && '📊 Reporte de Ventas de Hoy'}
                   {selectedCardDetails === 'saldo' && '💵 Cartera "El Fiado" y Saldos Pendientes'}
                   {selectedCardDetails === 'rutas' && '🚚 Rutas del Día, Mapas y Clientes'}
+                  {selectedCardDetails === 'mystery' && '🕵️‍♂️ Auditorías de Cliente Misterioso'}
                 </h3>
               </div>
               <button 
@@ -1411,6 +1494,17 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                           Mapa Satelital de Ruta: {cfg.vendedores.find(v => v.id === selectedRouteSellerId)?.ruta || 'Buscando...'}
                         </div>
+                        {/* Leyenda de pines */}
+                        <div className="absolute bottom-2 right-2.5 bg-black/70 border border-white/8 px-2 py-1.5 rounded pointer-events-none z-10 flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 opacity-90" />
+                            <span className="font-mono text-[6px] text-gray-400 uppercase tracking-wider">Venta efectivo</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 opacity-90" />
+                            <span className="font-mono text-[6px] text-gray-400 uppercase tracking-wider">Venta crédito</span>
+                          </div>
+                        </div>
 
                         <div className="w-full aspect-[16/9] min-h-[200px]">
                           <svg viewBox="0 0 380 220" className="w-full h-full text-white overflow-visible select-none font-sans" style={{ background: '#070A11' }}>
@@ -1481,10 +1575,10 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                               const isSelected = selectedStopIndex === idx;
                               const isReal = st.isReal;
                               const pinColor = isReal ? '#10B981' : (st.saldoDeuda > 0 ? '#F59E0B' : '#8A93A8');
-                              
+
                               return (
-                                <g 
-                                  key={`pin_${st.id}`} 
+                                <g
+                                  key={`pin_${st.id}`}
                                   transform={`translate(${st.x}, ${st.y})`}
                                   className="cursor-pointer transition-all"
                                   onClick={() => setSelectedStopIndex(idx)}
@@ -1493,12 +1587,12 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                                     <circle r="14" fill={`${cfg.color_principal}22`} stroke={cfg.color_principal} strokeWidth="1.2" strokeDasharray="3,3" />
                                   )}
                                   <circle r="9" fill={isSelected ? cfg.color_principal : '#111520'} stroke={pinColor} strokeWidth="2" filter={isSelected ? 'url(#svgGlow)' : ''} />
-                                  <text 
-                                    x="0" 
-                                    y="3" 
-                                    fill={isSelected ? '#06080C' : '#EEF1F8'} 
-                                    fontSize="8" 
-                                    fontWeight="900" 
+                                  <text
+                                    x="0"
+                                    y="3"
+                                    fill={isSelected ? '#06080C' : '#EEF1F8'}
+                                    fontSize="8"
+                                    fontWeight="900"
                                     textAnchor="middle"
                                   >
                                     {st.index}
@@ -1516,6 +1610,37 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                                 </g>
                               );
                             })}
+
+                            {/* Pines de eventos de venta con coordenadas GPS reales */}
+                            {(() => {
+                              const stops = getRouteBreadcrumbs(selectedRouteSellerId);
+                              const sellerVentas = ventas.filter(v =>
+                                v.vendedorId === selectedRouteSellerId && v.lat != null && v.lng != null
+                              );
+                              if (sellerVentas.length === 0) return null;
+
+                              const allLats = [...stops.map(s => s.latitude), ...sellerVentas.map(v => v.lat!)];
+                              const allLngs = [...stops.map(s => s.longitude), ...sellerVentas.map(v => v.lng!)];
+                              const minLat = Math.min(...allLats);
+                              const maxLat = Math.max(...allLats);
+                              const minLng = Math.min(...allLngs);
+                              const maxLng = Math.max(...allLngs);
+                              const latDiff = maxLat - minLat;
+                              const lngDiff = maxLng - minLng;
+
+                              return sellerVentas.map((v, i) => {
+                                const x = lngDiff > 0.00001 ? 80 + ((v.lng! - minLng) / lngDiff) * 230 : 180;
+                                const y = latDiff > 0.00001 ? 170 - ((v.lat! - minLat) / latDiff) * 120 : 110;
+                                const dotColor = v.tipoCobro === 'crédito' ? '#F59E0B' : '#10B981';
+                                return (
+                                  <g key={`venta_pin_${v.id || i}`} transform={`translate(${x}, ${y})`}>
+                                    <circle r="6" fill={dotColor} opacity="0.18" />
+                                    <circle r="3.5" fill={dotColor} opacity="0.9" />
+                                    <circle r="1.5" fill="#fff" opacity="0.95" />
+                                  </g>
+                                );
+                              });
+                            })()}
                           </svg>
                         </div>
                       </div>
@@ -1725,6 +1850,125 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                       </div>
                     );
                   })()}
+
+                </div>
+              )}
+
+              {/* DETAILS E: MYSTERY AUDIT HISTORY */}
+              {selectedCardDetails === 'mystery' && (
+                <div className="space-y-4">
+
+                  {/* Header row with new audit button */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[9px] font-mono text-amber-500/60 uppercase tracking-widest font-bold">Inspección Encubierta</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {mysteryAudits.length === 0 ? 'Sin auditorías registradas' : `${mysteryAudits.length} auditoría${mysteryAudits.length !== 1 ? 's' : ''} en total`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (cfg.vendedores.length > 0) setMSelectedSellerId(cfg.vendedores[0].id);
+                        setMCheckCobro(true);
+                        setMCheckRecibo(true);
+                        setMCheckPresentacion(true);
+                        setMCheckTrato(true);
+                        setMNotas('');
+                        setShowMysteryModal(true);
+                      }}
+                      className="shrink-0 px-3 py-2 text-[10px] font-extrabold rounded-xl cursor-pointer text-slate-950 transition-all"
+                      style={{ backgroundColor: cfg.color_principal }}
+                    >
+                      + Nueva
+                    </button>
+                  </div>
+
+                  {/* Summary stats per seller */}
+                  {mysteryAudits.length > 0 && (() => {
+                    const statsBySeller: Record<string, { nombre: string; total: number; sumScore: number }> = {};
+                    mysteryAudits.forEach(a => {
+                      if (!statsBySeller[a.vendedorId]) {
+                        statsBySeller[a.vendedorId] = { nombre: a.vendedorNombre, total: 0, sumScore: 0 };
+                      }
+                      statsBySeller[a.vendedorId].total += 1;
+                      statsBySeller[a.vendedorId].sumScore += a.calificacion;
+                    });
+                    return (
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(statsBySeller).map(([id, s]) => {
+                          const avg = Math.round(s.sumScore / s.total);
+                          const color = avg >= 80 ? '#10B981' : avg >= 50 ? '#F59E0B' : '#EF4444';
+                          return (
+                            <div key={id} className="bg-[#0C101A] border border-white/5 rounded-xl p-3 space-y-1">
+                              <p className="text-[10px] font-bold text-white truncate">{s.nombre.split(' ')[0]}</p>
+                              <div className="flex items-end gap-1.5">
+                                <span className="text-xl font-extrabold" style={{ color }}>{avg}%</span>
+                                <span className="text-[9px] text-gray-500 mb-0.5">{s.total} visita{s.total !== 1 ? 's' : ''}</span>
+                              </div>
+                              <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${avg}%`, backgroundColor: color }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Audit list */}
+                  {mysteryAudits.length === 0 ? (
+                    <div className="text-center py-10 space-y-2">
+                      <div className="text-3xl">🕵️‍♂️</div>
+                      <p className="text-xs text-gray-500">Aún no hay auditorías registradas.</p>
+                      <p className="text-[10px] text-gray-600">Presiona "+ Nueva" para crear la primera.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {mysteryAudits.map((a) => {
+                        const scoreColor = a.calificacion >= 80 ? 'text-emerald-400' : a.calificacion >= 50 ? 'text-amber-400' : 'text-red-400';
+                        const scoreBorder = a.calificacion >= 80 ? 'border-emerald-500/20' : a.calificacion >= 50 ? 'border-amber-500/20' : 'border-red-500/20';
+                        const scoreBg = a.calificacion >= 80 ? 'bg-emerald-500/5' : a.calificacion >= 50 ? 'bg-amber-500/5' : 'bg-red-500/5';
+                        const checks = [
+                          { label: 'Cobro', ok: a.checks.cobroExacto },
+                          { label: 'Recibo', ok: a.checks.entregaRecibo },
+                          { label: 'Presentación', ok: a.checks.presentacionLimpia },
+                          { label: 'Trato', ok: a.checks.tratoAmable },
+                        ];
+                        return (
+                          <div key={a.id} className={`border ${scoreBorder} ${scoreBg} rounded-xl p-3.5 space-y-2.5`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-bold text-white">{a.vendedorNombre}</p>
+                                <p className="text-[9px] text-gray-500">
+                                  Auditor: {a.auditor} · {new Date(a.timestamp).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
+                              </div>
+                              <span className={`text-2xl font-extrabold font-display shrink-0 ${scoreColor}`}>
+                                {a.calificacion}%
+                              </span>
+                            </div>
+
+                            <div className="flex gap-1.5 flex-wrap">
+                              {checks.map(c => (
+                                <span
+                                  key={c.label}
+                                  className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md border ${c.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}
+                                >
+                                  {c.ok ? '✓' : '✗'} {c.label}
+                                </span>
+                              ))}
+                            </div>
+
+                            {a.notas && (
+                              <p className="text-[10px] text-gray-400 italic border-t border-white/5 pt-2">
+                                "{a.notas}"
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                 </div>
               )}

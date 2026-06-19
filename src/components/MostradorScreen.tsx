@@ -17,9 +17,10 @@ interface MostradorScreenProps {
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
   isWorkerMode?: boolean;
+  ownerUid: string;
 }
 
-export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast, isWorkerMode }) => {
+export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast, isWorkerMode, ownerUid }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [cartMos, setCartMos] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
   const [paymentType, setPaymentType] = useState<'efectivo' | 'tarjeta'>('efectivo');
@@ -154,7 +155,7 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
       validado: true
     };
 
-    setDoc(doc(db, 'ventas', saleId), cleanDbData)
+    setDoc(doc(db, 'negocios', ownerUid, 'ventas', saleId), cleanDbData)
       .then(() => {
         console.log(`✓ Venta de mostrador ${saleId} sincronizada con la nube.`);
         // Mark as synchronized in local storage
