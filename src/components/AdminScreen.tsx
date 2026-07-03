@@ -1,7 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, setDoc, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Product, Seller, Venta, VentaItem, AppConfig, Devolucion, MysteryAudit, Abono, Client } from '../types';
+
+// Cap de registros en memoria/cache: 15 rutas × 30 ventas × ~5 días visibles.
+// Sin límite, un negocio activo revienta la cuota de localStorage (~5MB) en un mes.
+const MAX_VENTAS_SYNC = 2500;
+const MAX_REGISTROS_SYNC = 1000;
+const MAX_CACHE_ITEMS = 500;
+
+// Escritura segura a localStorage: recorta al cap y nunca truena por cuota llena
+const cacheSet = (key: string, arr: unknown[]) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(arr.slice(0, MAX_CACHE_ITEMS)));
+  } catch {
+    try { localStorage.removeItem(key); } catch { /* cuota llena: seguir sin cache */ }
+  }
+};
 
 interface AdminScreenProps {
   cfg: AppConfig;
@@ -250,7 +265,12 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
   // 1. Subscribe to Sales Collection in real-time
   useEffect(() => {
-    const q = query(collection(db, 'negocios', ownerUid, 'ventas'), orderBy('timestamp', 'desc'));
+    if (!ownerUid) {
+      // Demo / sin sesión: solo datos locales, sin tocar Firestore
+      setVentas(JSON.parse(localStorage.getItem('rp_ventas') || '[]'));
+      return;
+    }
+    const q = query(collection(db, 'negocios', ownerUid, 'ventas'), orderBy('timestamp', 'desc'), limit(MAX_VENTAS_SYNC));
     const unsub = onSnapshot(q, (snapshot) => {
       const salesFromDb: Venta[] = [];
       snapshot.forEach((docSnap) => {
@@ -303,7 +323,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       mergedSales.sort((a, b) => b.timestamp - a.timestamp);
 
       setVentas(mergedSales);
-      localStorage.setItem('rp_ventas', JSON.stringify(mergedSales));
+      cacheSet('rp_ventas', mergedSales);
     }, (error) => {
       console.warn('Real-time sales sync offline fallback:', error);
       const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
@@ -311,11 +331,15 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     });
 
     return () => unsub();
-  }, []);
+  }, [ownerUid]);
 
   // 2. Subscribe to Mermas (Devoluciones)
   useEffect(() => {
-    const q = query(collection(db, 'negocios', ownerUid, 'devoluciones'), orderBy('timestamp', 'desc'));
+    if (!ownerUid) {
+      setDevoluciones(JSON.parse(localStorage.getItem('rp_devoluciones') || '[]'));
+      return;
+    }
+    const q = query(collection(db, 'negocios', ownerUid, 'devoluciones'), orderBy('timestamp', 'desc'), limit(MAX_REGISTROS_SYNC));
     const unsub = onSnapshot(q, (snapshot) => {
       const devolsFromDb: Devolucion[] = [];
       snapshot.forEach((docSnap) => {
@@ -353,7 +377,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       mergedDevols.sort((a, b) => b.timestamp - a.timestamp);
 
       setDevoluciones(mergedDevols);
-      localStorage.setItem('rp_devoluciones', JSON.stringify(mergedDevols));
+      cacheSet('rp_devoluciones', mergedDevols);
     }, (error) => {
       console.warn('Real-time devoluciones offline:', error);
       const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
@@ -361,11 +385,15 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     });
 
     return () => unsub();
-  }, []);
+  }, [ownerUid]);
 
   // 3. Subscribe to Mystery Audits
   useEffect(() => {
-    const q = query(collection(db, 'negocios', ownerUid, 'mystery_audits'), orderBy('timestamp', 'desc'));
+    if (!ownerUid) {
+      setMysteryAudits(JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]'));
+      return;
+    }
+    const q = query(collection(db, 'negocios', ownerUid, 'mystery_audits'), orderBy('timestamp', 'desc'), limit(MAX_REGISTROS_SYNC));
     const unsub = onSnapshot(q, (snapshot) => {
       const auditsFromDb: MysteryAudit[] = [];
       snapshot.forEach((docSnap) => {
@@ -383,7 +411,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
         });
       });
       setMysteryAudits(auditsFromDb);
-      localStorage.setItem('rp_mystery_audits', JSON.stringify(auditsFromDb));
+      cacheSet('rp_mystery_audits', auditsFromDb);
     }, (error) => {
       console.warn('Real-time mystery audits offline:', error);
       const local = JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]');
@@ -391,11 +419,15 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     });
 
     return () => unsub();
-  }, []);
+  }, [ownerUid]);
 
   // 4. Subscribe to Payments (Abonos) Sincronizados
   useEffect(() => {
-    const q = query(collection(db, 'negocios', ownerUid, 'abonos'), orderBy('timestamp', 'desc'));
+    if (!ownerUid) {
+      setAbonos(JSON.parse(localStorage.getItem('rp_abonos') || '[]'));
+      return;
+    }
+    const q = query(collection(db, 'negocios', ownerUid, 'abonos'), orderBy('timestamp', 'desc'), limit(MAX_REGISTROS_SYNC));
     const unsub = onSnapshot(q, (snapshot) => {
       const paymentsList: Abono[] = [];
       snapshot.forEach((docSnap) => {
@@ -410,7 +442,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
         });
       });
       setAbonos(paymentsList);
-      localStorage.setItem('rp_abonos', JSON.stringify(paymentsList));
+      cacheSet('rp_abonos', paymentsList);
     }, (error) => {
       console.warn('Real-time payments sync fallback:', error);
       const local = JSON.parse(localStorage.getItem('rp_abonos') || '[]');
@@ -418,10 +450,14 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     });
 
     return () => unsub();
-  }, []);
+  }, [ownerUid]);
 
   // 5. Subscribe to Master Clients Collection
   useEffect(() => {
+    if (!ownerUid) {
+      setDbClientes(JSON.parse(localStorage.getItem('rp_clientes') || '[]'));
+      return;
+    }
     const q = query(collection(db, 'negocios', ownerUid, 'clientes'));
     const unsub = onSnapshot(q, (snapshot) => {
       const clientsList: Client[] = [];
@@ -429,7 +465,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
         clientsList.push({ id: docSnap.id, ...docSnap.data() } as Client);
       });
       setDbClientes(clientsList);
-      localStorage.setItem('rp_clientes', JSON.stringify(clientsList));
+      cacheSet('rp_clientes', clientsList);
     }, (error) => {
       console.warn('Real-time clients sync error:', error);
       const local = JSON.parse(localStorage.getItem('rp_clientes') || '[]');
@@ -437,7 +473,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     });
 
     return () => unsub();
-  }, []);
+  }, [ownerUid]);
 
   // Group and compute client transaction accounts, credit ledger balances and historic purchases
   const getClientesLedger = () => {
@@ -493,7 +529,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     return Object.values(ledgerTable).sort((a, b) => b.saldo_actual - a.saldo_actual);
   };
 
-  const computedLedgerList = getClientesLedger();
+  // Memoizado: sin esto se recalcula toda la cartera en cada render (cada tecla del chat)
+  const computedLedgerList = useMemo(() => getClientesLedger(), [ventas, abonos]);
 
   // Metrics calculations for the 4 key cards
   const totalCobrado = ventas.reduce((sum, v) => sum + (v.monto || 0), 0);
@@ -538,7 +575,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     return Object.values(table).sort((a, b) => b.totalCents - a.totalCents).slice(0, 4);
   };
 
-  const topProducts = getProductPopularity();
+  const topProducts = useMemo(() => getProductPopularity(), [ventas]);
   const maxProductRevenue = topProducts.length > 0 ? topProducts[0].totalCents : 1;
 
   const handleSendReport = async () => {
