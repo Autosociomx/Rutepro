@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, doc, setDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { Product, Seller, AppConfig, Devolucion, Client } from '../types';
-import { validateSale } from '../utils/syncEngine';
+import { validateSale, safeParseArray } from '../utils/syncEngine';
 
 interface ClientSaleRecord {
   id: string;
@@ -161,7 +161,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       });
 
     // 1. Reconstruct today's shift clients/sales from local rp_ventas to prevent data loss in offline mode
-    const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
+    const localSales = safeParseArray<any>(localStorage.getItem('rp_ventas'));
     const activeSales = localSales.filter((s: any) => s.vendedorId === vnd.id);
     const mappedCliHoy: ClientSaleRecord[] = activeSales.map((s: any) => ({
       id: s.id,
@@ -182,8 +182,8 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setCliHoy(mappedCliHoy);
 
     // 2. Load local mermas/devoluciones for this seller
-    const localDevs = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
-    const activeDevs = (localDevs as Devolucion[]).filter((d: Devolucion) => d.vendedorId === vnd.id);
+    const localDevs = safeParseArray<Devolucion>(localStorage.getItem('rp_devoluciones'));
+    const activeDevs = localDevs.filter((d: Devolucion) => d.vendedorId === vnd.id);
     setDevoluciones(activeDevs);
 
     triggerToast(`Ruta iniciada para ${vnd.nombre}`);

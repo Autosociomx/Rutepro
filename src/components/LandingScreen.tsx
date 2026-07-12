@@ -95,7 +95,18 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
   // New passcode/pin lock states for "Panel del Dueño" (Administración)
   const [showAdminLock, setShowAdminLock] = useState(false);
   const [adminPin, setAdminPin] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
   const [pinError, setPinError] = useState('');
+  // Whether the owner has already created a real admin PIN on this device.
+  // The PIN is kept only in device-local storage (never synced to the public
+  // Firestore config), so it isn't world-readable.
+  const [pinConfigured, setPinConfigured] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('rp_admin_pin');
+    } catch {
+      return false;
+    }
+  });
 
   // Background Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -219,27 +230,67 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
     };
   }, [cfg.color_principal]);
 
+  const openAdminLock = () => {
+    setAdminPin('');
+    setPinConfirm('');
+    setPinError('');
+    setShowAdminLock(true);
+  };
+
+  const closeAdminLock = () => {
+    setShowAdminLock(false);
+    setAdminPin('');
+    setPinConfirm('');
+    setPinError('');
+  };
+
+  const enterAdmin = () => {
+    closeAdminLock();
+    onGo('admin');
+  };
+
   const handleValidatePin = () => {
-    if (!adminPin) {
+    const pin = adminPin.trim();
+
+    // First-time setup on this device: force the owner to create a real PIN
+    // instead of shipping a hard-coded / bypassable one.
+    if (!pinConfigured) {
+      if (!/^\d{4,8}$/.test(pin)) {
+        setPinError('Crea un PIN numérico de 4 a 8 dígitos');
+        return;
+      }
+      if (pin !== pinConfirm.trim()) {
+        setPinError('Los PIN no coinciden');
+        return;
+      }
+      try {
+        localStorage.setItem('rp_admin_pin', pin);
+      } catch {
+        setPinError('No se pudo guardar el PIN en este dispositivo');
+        return;
+      }
+      setPinConfigured(true);
+      triggerToast('✓ PIN de administrador creado');
+      enterAdmin();
+      return;
+    }
+
+    // Normal access: require an exact match against the stored PIN.
+    let stored = '';
+    try {
+      stored = localStorage.getItem('rp_admin_pin') || '';
+    } catch {
+      stored = '';
+    }
+    if (!pin) {
       setPinError('Ingresa la clave de administración');
       return;
     }
-    // Let's accept any standard pin or '1234'
-    if (adminPin === '1234' || adminPin.trim() !== '') {
-      setShowAdminLock(false);
-      setAdminPin('');
-      setPinError('');
-      onGo('admin');
+    if (pin === stored) {
+      enterAdmin();
     } else {
       setPinError('Clave incorrecta');
     }
-  };
-
-  const handleBypassPin = () => {
-    setShowAdminLock(false);
-    setAdminPin('');
-    setPinError('');
-    onGo('admin');
   };
 
   return (
@@ -261,7 +312,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
         {/* Animated App Logo Wrapper (Secret gateway to Owner Console) */}
         <button 
           type="button"
-          onClick={() => setShowAdminLock(true)}
+          onClick={openAdminLock}
           title="Acceso de Administración"
           className="w-20 h-20 rounded-2xl bg-[#111520] border flex items-center justify-center font-display font-extrabold text-3xl mb-8 shadow-xl overflow-hidden p-1.5 transition-all duration-500 hover:scale-105 cursor-pointer hover:brightness-110 active:scale-95 group focus:outline-none"
           style={{ borderColor: `${cfg.color_principal || '#C9912A'}45`, boxShadow: `0 10px 30px -10px ${cfg.color_principal || '#C9912A'}40` }}
@@ -436,62 +487,67 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
           <div className="bg-[#111520] border border-purple-500/20 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl text-left">
             <div className="flex items-center gap-2">
               <span className="text-xl">🔒</span>
-              <div className="font-display font-bold text-base text-white">Acceso de Administración</div>
+              <div className="font-display font-bold text-base text-white">
+                {pinConfigured ? 'Acceso de Administración' : 'Crea tu PIN de Administrador'}
+              </div>
             </div>
-            
+
             <p className="text-xs text-[#8A93A8] leading-relaxed">
-              Por motivos de seguridad, ingresa la clave de administrador para consultar el balance corporativo y las rutas de reparto.
+              {pinConfigured
+                ? 'Por motivos de seguridad, ingresa tu PIN de administrador para consultar el balance corporativo y las rutas de reparto.'
+                : 'Antes de entregar el equipo, define un PIN privado (4 a 8 dígitos). Se guarda solo en este dispositivo y protege el balance, los cobros y el borrado de datos.'}
             </p>
 
             <div className="space-y-3">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Clave de Acceso</label>
-                <input 
-                  type="password" 
-                  value={adminPin} 
+                <label className="text-[10px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">
+                  {pinConfigured ? 'Clave de Acceso' : 'Nuevo PIN'}
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={adminPin}
                   onChange={(e) => {
                     setAdminPin(e.target.value);
                     setPinError('');
-                  }} 
+                  }}
                   onKeyDown={(e) => e.key === 'Enter' && handleValidatePin()}
                   className="bg-[#181D2B] border border-white/5 rounded-lg px-3.5 py-2.5 text-sm tracking-widest text-[#EEF1F8] placeholder-[#3E4A60] focus:outline-none focus:border-purple-500 w-full"
                   placeholder="••••"
                   autoFocus
                 />
+                {!pinConfigured && (
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    value={pinConfirm}
+                    onChange={(e) => {
+                      setPinConfirm(e.target.value);
+                      setPinError('');
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleValidatePin()}
+                    className="bg-[#181D2B] border border-white/5 rounded-lg px-3.5 py-2.5 text-sm tracking-widest text-[#EEF1F8] placeholder-[#3E4A60] focus:outline-none focus:border-purple-500 w-full"
+                    placeholder="Confirma el PIN"
+                  />
+                )}
                 {pinError && (
                   <span className="text-[10px] text-red-400 font-semibold">⚠️ {pinError}</span>
                 )}
-                <span className="text-[10px] text-[#3E4A60] leading-normal">
-                  (Por defecto: <strong className="text-[#8A93A8]">1234</strong>, o presiona <strong>"Entrar directo"</strong> para saltar el PIN)
-                </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-2 pt-2.5">
-              <button 
+              <button
                 type="button"
                 onClick={handleValidatePin}
                 className="w-full py-2.5 rounded-lg text-xs font-bold text-center bg-purple-500 text-white hover:bg-purple-400 active:scale-97 cursor-pointer transition-all"
               >
-                Validar e Ingresar
-              </button>
-              
-              {/* BYPASS BUTTON - "Entras directo. Sí, yo le doy." */}
-              <button 
-                type="button"
-                onClick={handleBypassPin}
-                className="w-full py-2.5 rounded-lg text-xs font-bold text-center bg-amber-500/10 border border-amber-500/20 text-[#E8B04A] hover:bg-amber-500/20 active:scale-97 cursor-pointer transition-all"
-              >
-                🔓 Entrar directo (Sí, yo le doy)
+                {pinConfigured ? 'Validar e Ingresar' : 'Guardar PIN y Entrar'}
               </button>
 
-              <button 
+              <button
                 type="button"
-                onClick={() => {
-                  setShowAdminLock(false);
-                  setAdminPin('');
-                  setPinError('');
-                }}
+                onClick={closeAdminLock}
                 className="w-full py-2 rounded-lg text-xs font-semibold text-center text-[#3E4A60] hover:text-[#8A93A8] cursor-pointer transition-all"
               >
                 Cancelar
