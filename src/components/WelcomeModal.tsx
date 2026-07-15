@@ -78,6 +78,10 @@ export function WelcomeModal({ onLaunchDemo, onDismiss }: WelcomeModalProps) {
                 </p>
               </div>
 
+              <p className="text-center text-[9px] text-[#5C6478] tracking-wide">
+                🔒 Sin tarjeta para probar · Tus datos son solo tuyos
+              </p>
+
               <button
                 onClick={() => setStep(2)}
                 className="w-full py-3.5 text-sm font-bold text-[#0B0E14] bg-amber-400 hover:brightness-105 rounded-xl cursor-pointer transition-all shadow-lg shadow-amber-500/10"

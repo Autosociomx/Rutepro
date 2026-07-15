@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { db, handleFirestoreError, OperationType, auth } from './firebase';
+import { db, handleFirestoreError, OperationType, auth, testConnection } from './firebase';
 import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc, writeBatch, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from './types';
@@ -73,7 +73,16 @@ export default function App() {
   });
   const [authReady, setAuthReady] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  // Visitante frío (sin sesión, sin invitación de contador) → entra directo al
+  // gancho/demo, no al registro. El registro se activa solo con acción explícita.
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const m = params.get('mode');
+    if (m === 'repartidor' || m === 'mostrador') return false;
+    if (params.get('join')) return false;
+    return true;
+  });
+  const [authTab, setAuthTab] = useState<'register' | 'login'>('register');
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
   const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
   const [billingLoading, setBillingLoading] = useState(true);
@@ -189,6 +198,13 @@ export default function App() {
     });
     return unsub;
   }, []);
+
+  // El modo demo no toca Firestore — evita el ping de conectividad mientras
+  // el visitante solo está explorando el gancho.
+  useEffect(() => {
+    if (isDemoMode || isWorkerMode) return;
+    testConnection();
+  }, [isDemoMode, isWorkerMode]);
 
   // Maneja ?join={ownerUid} — vincula al contador con el negocio del dueño
   useEffect(() => {
@@ -523,6 +539,7 @@ export default function App() {
 
   if (!authUser && !isWorkerMode && !isDemoMode) return (
     <AuthScreen
+      initialTab={authTab}
       onSuccess={() => {}}
       onDemoMode={() => { setIsDemoMode(true); setShowWelcome(true); }}
       triggerToast={triggerToast}
@@ -591,7 +608,7 @@ export default function App() {
           triggerToast={triggerToast}
           ownerUid={ownerUid}
           isDemoMode={isDemoMode}
-          onRegistrarse={() => { setIsDemoMode(false); setShowWelcome(false); }}
+          onRegistrarse={(tab) => { setIsDemoMode(false); setShowWelcome(false); setAuthTab(tab || 'register'); }}
         />
       )}
 

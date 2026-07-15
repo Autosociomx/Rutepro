@@ -10,15 +10,15 @@ interface AuthScreenProps {
   onSuccess: () => void;
   onDemoMode: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
+  initialTab?: 'register' | 'login';
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, triggerToast }) => {
-  const [tab, setTab] = useState<'register' | 'login'>('register');
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, triggerToast, initialTab }) => {
+  const [tab, setTab] = useState<'register' | 'login'>(initialTab || 'register');
   const [loading, setLoading] = useState(false);
 
   // Register fields
   const [nombre, setNombre] = useState('');
-  const [telefono, setTelefono] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -39,7 +39,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
     clearErr();
 
     if (!nombre.trim()) { setFieldErr('Ingresa tu nombre completo.'); return; }
-    if (!telefono.trim()) { setFieldErr('Ingresa tu número de teléfono.'); return; }
     if (!email.trim()) { setFieldErr('Ingresa tu correo electrónico.'); return; }
     if (password.length < 6) { setFieldErr('La contraseña debe tener al menos 6 caracteres.'); return; }
     if (password !== confirmPwd) { setFieldErr('Las contraseñas no coinciden.'); return; }
@@ -57,7 +56,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
         uid,
         nombre: nombre.trim(),
         email: email.trim().toLowerCase(),
-        telefono: telefono.trim(),
         rol: esContador ? 'contador' : 'dueno',
         plan: 'trial',
         trial_ends_at: trialEndsAt,
@@ -164,18 +162,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onDemoMode, t
                   className="bg-[#111520] border border-white/5 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500/60 placeholder-[#3E4A60]"
                   placeholder="Ej: Juan García Pérez"
                   autoComplete="name"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Teléfono</label>
-                <input
-                  type="tel"
-                  value={telefono}
-                  onChange={(e) => { setTelefono(e.target.value); clearErr(); }}
-                  className="bg-[#111520] border border-white/5 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500/60 placeholder-[#3E4A60]"
-                  placeholder="Ej: 664 123 4567"
-                  autoComplete="tel"
                 />
               </div>
 

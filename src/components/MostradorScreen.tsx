@@ -275,12 +275,21 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400">
+          <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400">
             <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
             <span>Punto de Venta Listo</span>
           </div>
-          <button 
-            onClick={() => setShowOptionsModal(true)} 
+          {!isWorkerMode && (
+            <button
+              onClick={onGoBack}
+              className="w-8.5 h-8.5 rounded-md bg-[#111520] border border-white/5 flex items-center justify-center text-[#8A93A8] hover:text-white transition-all text-xs cursor-pointer"
+              title="Volver"
+            >
+              ←
+            </button>
+          )}
+          <button
+            onClick={() => setShowOptionsModal(true)}
             className="w-8.5 h-8.5 rounded-md bg-[#111520] border border-white/5 flex items-center justify-center text-[#8A93A8] hover:text-white transition-all text-xs cursor-pointer"
           >
             ⚙️
@@ -288,10 +297,10 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
         </div>
       </div>
 
-      {/* POS Content Body Split layout */}
-      <div className="flex-1 flex overflow-hidden p-3.5 gap-3.5 max-h-[calc(100vh-56px)] select-none">
+      {/* POS Content Body Split layout — apilado en móvil, lado a lado desde tablet */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden p-3.5 gap-3.5 max-h-[calc(100vh-56px)] select-none">
         {/* Left Side: Product catalog with search bar */}
-        <div className="flex-1 flex flex-col gap-3 min-w-0 h-full overflow-hidden">
+        <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 h-full overflow-hidden">
           <div className="relative shrink-0 text-left">
             <input 
               type="text" 
@@ -327,8 +336,8 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
           </div>
         </div>
 
-        {/* Right Side: Shopping Cart sidebar */}
-        <div className="w-[280px] shrink-0 bg-[#0B0E14] border border-white/5 rounded-xl p-3.5 flex flex-col h-full justify-between overflow-hidden">
+        {/* Right Side: Shopping Cart sidebar — franja fija en móvil, columna completa desde tablet */}
+        <div className="w-full md:w-[280px] shrink-0 h-[46vh] md:h-full bg-[#0B0E14] border border-white/5 rounded-xl p-3.5 flex flex-col justify-between overflow-hidden">
           <div className="flex flex-col gap-3.5 flex-1 overflow-hidden h-full">
             <div className="flex justify-between items-center shrink-0">
               <span className="font-display font-bold text-xs text-white">Carrito de Compra</span>

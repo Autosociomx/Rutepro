@@ -68,7 +68,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Simple test to validate Firestore connection on boot
+// Simple test to validate Firestore connection — llamar solo fuera de modo demo,
+// que no necesita red (ver App.tsx). Evita un ping muerto en el primer render.
 export async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
@@ -78,4 +79,3 @@ export async function testConnection() {
     }
   }
 }
-testConnection();
