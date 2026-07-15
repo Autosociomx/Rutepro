@@ -6,6 +6,25 @@ export interface SyncResult {
   devolucionesSincronizadas: number;
 }
 
+// Maximum sale amount accepted, in cents ($1,000,000.00 MXN). Mirrors the
+// isMoneyCents() bound enforced in firestore.rules so the client rejects the
+// same garbage the backend would.
+export const MAX_MONTO_CENTS = 100000000;
+
+/**
+ * Safely parse a JSON array out of localStorage. Returns [] on any corruption
+ * so a single bad cache entry can never crash a screen on load.
+ */
+export function safeParseArray<T = any>(raw: string | null): T[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Validates a sale locally before registration and cloud storage.
  * Verifies that the items are well-formed, quantities are positive integers,
@@ -26,20 +45,29 @@ export function validateSale(sale: any): { isValid: boolean; reason?: string } {
   for (const it of sale.items) {
     if (!it.id) return { isValid: false, reason: 'ID de producto ausente en el carrito.' };
     if (!it.nombre) return { isValid: false, reason: 'Nombre de producto ausente en el carrito.' };
-    
-    const qty = Number(it.q) || 0;
-    const priceCents = Number(it.pr) || 0;
-    
-    if (qty <= 0) return { isValid: false, reason: `Cantidad inválida (${qty}) para el producto: ${it.nombre}` };
-    if (priceCents < 0) return { isValid: false, reason: `Precio negativo inválido para el producto: ${it.nombre}` };
-    
+
+    const qty = Number(it.q);
+    const priceCents = Number(it.pr);
+
+    if (!Number.isFinite(qty) || qty <= 0) return { isValid: false, reason: `Cantidad inválida (${it.q}) para el producto: ${it.nombre}` };
+    if (!Number.isFinite(priceCents) || priceCents < 0) return { isValid: false, reason: `Precio inválido para el producto: ${it.nombre}` };
+
     calculatedTotal += qty * priceCents;
   }
 
-  if (Number(sale.monto) !== calculatedTotal) {
-    return { 
-      isValid: false, 
-      reason: `Discrepancia en el balance. Total registrado: $${(sale.monto / 100).toFixed(2)}, Esperado por sumatoria: $${(calculatedTotal / 100).toFixed(2)}` 
+  const monto = Number(sale.monto);
+  if (!Number.isFinite(monto) || monto < 0) {
+    return { isValid: false, reason: 'El monto de la venta es inválido.' };
+  }
+  if (monto > MAX_MONTO_CENTS) {
+    return { isValid: false, reason: 'El monto de la venta excede el máximo permitido.' };
+  }
+
+  // Compare rounded cents to avoid floating-point noise rejecting valid sales.
+  if (Math.round(monto) !== Math.round(calculatedTotal)) {
+    return {
+      isValid: false,
+      reason: `Discrepancia en el balance. Total registrado: $${(monto / 100).toFixed(2)}, Esperado por sumatoria: $${(calculatedTotal / 100).toFixed(2)}`
     };
   }
 

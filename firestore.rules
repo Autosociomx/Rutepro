@@ -7,7 +7,9 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ─────────────────────────────────────────────────────────────
     // Helper functions
+    // ─────────────────────────────────────────────────────────────
     function isValidId(id) {
        return id is string && id.size() > 0 && id.size() <= 128;
     }
@@ -16,77 +18,134 @@ service cloud.firestore {
       return color is string && (color.matches('^#[A-Fa-f0-9]{6}$') || color.matches('^#[A-Fa-f0-9]{3}$'));
     }
 
-    // Config global collection (for app preferences and brand color customization)
+    // A monetary amount expressed in integer cents. Bounded to a sane
+    // maximum ($1,000,000.00 MXN) to block overflow / laundering-style
+    // garbage values, and forced non-negative to block fake refunds.
+    function isMoneyCents(v) {
+      return v is number && v >= 0 && v <= 100000000;
+    }
+
+    // A short, non-empty, length-capped string (names, labels).
+    function isShortText(v) {
+      return v is string && v.size() > 0 && v.size() <= 160;
+    }
+
+    function has(data, field) {
+      return field in data;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Config global (brand + catalog). Public read; guarded write.
+    // ─────────────────────────────────────────────────────────────
     match /config/{configId} {
       allow read: if true;
-      allow write: if request.auth != null && 
-                      configId == 'global' && 
+      allow write: if request.auth != null &&
+                      configId == 'global' &&
                       request.resource.data.nombre is string &&
                       request.resource.data.nombre.size() <= 100 &&
-                      isHexColor(request.resource.data.color_principal);
+                      isHexColor(request.resource.data.color_principal) &&
+                      // Catalog / staff must be lists when present (blocks
+                      // injection of scalar or object blobs into these fields).
+                      (!has(request.resource.data, 'productos') || request.resource.data.productos is list) &&
+                      (!has(request.resource.data, 'vendedores') || request.resource.data.vendedores is list);
     }
 
-    // Ventas collection
+    // ─────────────────────────────────────────────────────────────
+    // Ventas (sales / cobros). The financial audit trail.
+    // ─────────────────────────────────────────────────────────────
     match /ventas/{ventaId} {
       allow read: if true;
-      allow create, update: if request.auth != null && 
-                              isValidId(ventaId) && 
-                              request.resource.data.monto is number &&
-                              request.resource.data.monto >= 0 &&
-                              request.resource.data.vendedorNombre is string;
-      allow delete: if request.auth != null && isValidId(ventaId); // Allows cleanup during admin reset
+      allow create, update: if request.auth != null &&
+                              isValidId(ventaId) &&
+                              isMoneyCents(request.resource.data.monto) &&
+                              isShortText(request.resource.data.vendedorNombre) &&
+                              request.resource.data.vendedorId is string &&
+                              request.resource.data.clienteNombre is string &&
+                              request.resource.data.items is list &&
+                              request.resource.data.items.size() > 0 &&
+                              (!has(request.resource.data, 'tipoCobro') ||
+                                 request.resource.data.tipoCobro in ['efectivo', 'crédito', 'credito']);
+      // NOTE: delete stays enabled because the owner's "Limpiar todo" reset
+      // runs client-side batch deletes. This is a residual risk — see
+      // AUDITORIA_RUTA_PAGO.md. True audit-trail immutability requires moving
+      // the reset server-side (Cloud Function + Admin SDK) and enabling
+      // Firebase App Check, then setting this to `if false`.
+      allow delete: if request.auth != null && isValidId(ventaId);
     }
 
-    // Devoluciones collection
+    // ─────────────────────────────────────────────────────────────
+    // Devoluciones / mermas.
+    // ─────────────────────────────────────────────────────────────
     match /devoluciones/{devolucionId} {
       allow read: if true;
-      allow create, update: if request.auth != null && 
+      allow create, update: if request.auth != null &&
                               isValidId(devolucionId) &&
                               request.resource.data.cantidad is number &&
-                              request.resource.data.cantidad >= 0;
-      allow delete: if request.auth != null && isValidId(devolucionId); // Allows cleanup during admin reset
+                              request.resource.data.cantidad >= 0 &&
+                              request.resource.data.cantidad <= 1000000;
+      allow delete: if request.auth != null && isValidId(devolucionId); // reset only
     }
 
-    // Rutas metrics collection
+    // ─────────────────────────────────────────────────────────────
+    // Rutas metrics.
+    // ─────────────────────────────────────────────────────────────
     match /rutas_metrics/{metricId} {
       allow read: if true;
       allow write: if request.auth != null && isValidId(metricId);
     }
 
-    // Clientes collection
+    // ─────────────────────────────────────────────────────────────
+    // Clientes.
+    // ─────────────────────────────────────────────────────────────
     match /clientes/{clienteId} {
       allow read: if true;
-      allow write: if request.auth != null && 
+      allow write: if request.auth != null &&
                       isValidId(clienteId) &&
-                      request.resource.data.nombre is string &&
-                      request.resource.data.nombre.size() > 0;
+                      isShortText(request.resource.data.nombre);
+      allow delete: if request.auth != null && isValidId(clienteId); // reset only
     }
 
-    // Inventario ruta collection
+    // ─────────────────────────────────────────────────────────────
+    // Inventario ruta.
+    // ─────────────────────────────────────────────────────────────
     match /inventario_ruta/{vendedorId} {
       allow read: if true;
       allow write: if request.auth != null && isValidId(vendedorId);
     }
 
-    // Historial cierres collection
+    // ─────────────────────────────────────────────────────────────
+    // Historial de cierres (liquidaciones). Money fields validated.
+    // ─────────────────────────────────────────────────────────────
     match /historial_cierres/{cierreId} {
       allow read: if true;
-      allow write: if request.auth != null && 
+      allow write: if request.auth != null &&
                       isValidId(cierreId) &&
-                      request.resource.data.ventas_efectivo is number &&
-                      request.resource.data.ventas_efectivo >= 0;
+                      isMoneyCents(request.resource.data.ventas_efectivo) &&
+                      (!has(request.resource.data, 'gastos_total') || isMoneyCents(request.resource.data.gastos_total)) &&
+                      (!has(request.resource.data, 'liquido_final') || request.resource.data.liquido_final is number);
     }
 
-    // Mystery Audits collection
+    // ─────────────────────────────────────────────────────────────
+    // Mystery Audits.
+    // ─────────────────────────────────────────────────────────────
     match /mystery_audits/{auditId} {
       allow read: if true;
       allow write: if request.auth != null && isValidId(auditId);
     }
 
-    // Abonos collection
+    // ─────────────────────────────────────────────────────────────
+    // Abonos (credit payments toward client debt).
+    // These directly reduce a client's saldo, so amount MUST be validated:
+    // previously any value (negative, huge, non-numeric) was accepted, which
+    // let anyone zero-out real debt or corrupt the ledger.
+    // ─────────────────────────────────────────────────────────────
     match /abonos/{abonoId} {
       allow read: if true;
-      allow write: if request.auth != null && isValidId(abonoId);
+      allow create, update: if request.auth != null &&
+                              isValidId(abonoId) &&
+                              isMoneyCents(request.resource.data.monto) &&
+                              request.resource.data.clienteNombre is string;
+      allow delete: if request.auth != null && isValidId(abonoId); // reset only
     }
   }
 }

@@ -5,11 +5,103 @@
 
 import express from 'express';
 import path from 'path';
+import dns from 'dns/promises';
+import net from 'net';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// ───────────────────────────────────────────────────────────────
+// SSRF protection: only allow outbound fetches to public http(s)
+// hosts. Blocks loopback, private, link-local (incl. the cloud
+// metadata endpoint 169.254.169.254) and other reserved ranges.
+// ───────────────────────────────────────────────────────────────
+function ipToLong(ip: string): number {
+  return ip.split('.').reduce((acc, oct) => (acc << 8) + parseInt(oct, 10), 0) >>> 0;
+}
+
+function isPrivateIPv4(ip: string): boolean {
+  const long = ipToLong(ip);
+  const inRange = (base: string, bits: number) =>
+    (long >>> (32 - bits)) === (ipToLong(base) >>> (32 - bits));
+  return (
+    inRange('0.0.0.0', 8) ||        // "this" network
+    inRange('10.0.0.0', 8) ||       // private
+    inRange('100.64.0.0', 10) ||    // CGNAT
+    inRange('127.0.0.0', 8) ||      // loopback
+    inRange('169.254.0.0', 16) ||   // link-local + cloud metadata
+    inRange('172.16.0.0', 12) ||    // private
+    inRange('192.0.0.0', 24) ||     // IETF protocol assignments
+    inRange('192.168.0.0', 16) ||   // private
+    inRange('198.18.0.0', 15) ||    // benchmarking
+    inRange('224.0.0.0', 4) ||      // multicast
+    inRange('240.0.0.0', 4)         // reserved
+  );
+}
+
+function isPrivateIp(ip: string): boolean {
+  const type = net.isIP(ip);
+  if (type === 4) return isPrivateIPv4(ip);
+  if (type === 6) {
+    const lower = ip.toLowerCase();
+    // IPv4-mapped IPv6 (::ffff:a.b.c.d) — check the embedded v4 address.
+    const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) return isPrivateIPv4(mapped[1]);
+    return (
+      lower === '::1' ||             // loopback
+      lower === '::' ||             // unspecified
+      lower.startsWith('fc') ||     // unique local fc00::/7
+      lower.startsWith('fd') ||
+      lower.startsWith('fe8') ||    // link-local fe80::/10
+      lower.startsWith('fe9') ||
+      lower.startsWith('fea') ||
+      lower.startsWith('feb')
+    );
+  }
+  return true; // not a recognizable IP → treat as unsafe
+}
+
+// Validates a user-supplied URL is a public http(s) endpoint. Resolves the
+// hostname and rejects if any resolved address is in a private/reserved range.
+async function assertPublicHttpUrl(rawUrl: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('URL inválida');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Solo se permiten direcciones http o https');
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host === 'metadata' ||
+    host === 'metadata.google.internal'
+  ) {
+    throw new Error('Host no permitido');
+  }
+  // If the host is a literal IP, check it directly.
+  if (net.isIP(host)) {
+    if (isPrivateIp(host)) throw new Error('Host no permitido (rango privado)');
+    return;
+  }
+  // Otherwise resolve DNS and reject if it points anywhere internal.
+  let records: { address: string }[] = [];
+  try {
+    records = await dns.lookup(host, { all: true });
+  } catch {
+    throw new Error('No se pudo resolver el host');
+  }
+  if (records.length === 0 || records.some((r) => isPrivateIp(r.address))) {
+    throw new Error('Host no permitido (rango privado)');
+  }
+}
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -35,7 +127,44 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  // Cap request bodies to blunt memory-exhaustion payloads.
+  app.use(express.json({ limit: '256kb' }));
+
+  // ── Lightweight in-memory rate limiter for the AI endpoints ──
+  // These call paid Gemini APIs, so leaving them unauthenticated and
+  // unlimited invites cost/quota abuse. Fixed-window per client IP.
+  const RATE_LIMIT_WINDOW_MS = 60_000;
+  const RATE_LIMIT_MAX = 30; // requests per window per IP
+  const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+  app.use('/api', (req, res, next) => {
+    // Health check is cheap and used for liveness probes — don't throttle it.
+    if (req.path === '/health') return next();
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+      || req.socket.remoteAddress
+      || 'unknown';
+    const now = Date.now();
+    const bucket = rateBuckets.get(ip);
+    if (!bucket || now > bucket.resetAt) {
+      rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    } else {
+      bucket.count += 1;
+      if (bucket.count > RATE_LIMIT_MAX) {
+        const retryAfter = Math.ceil((bucket.resetAt - now) / 1000);
+        res.setHeader('Retry-After', String(retryAfter));
+        return res.status(429).json({ error: 'Demasiadas solicitudes. Intenta de nuevo en un momento.' });
+      }
+    }
+    next();
+  });
+
+  // Opportunistically evict expired buckets so the map can't grow unbounded.
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, bucket] of rateBuckets) {
+      if (now > bucket.resetAt) rateBuckets.delete(ip);
+    }
+  }, RATE_LIMIT_WINDOW_MS).unref();
 
   // API to test backend status
   app.get('/api/health', (req, res) => {
@@ -393,6 +522,13 @@ Establece un nombre de marca elegante en español mexicano, un subtítulo descri
       targetUrl = 'https://' + targetUrl;
     }
 
+    // SSRF guard: reject internal/loopback/metadata targets before fetching.
+    try {
+      await assertPublicHttpUrl(targetUrl);
+    } catch (guardErr: any) {
+      return res.status(400).json({ error: guardErr?.message || 'Dirección URL no permitida' });
+    }
+
     console.log('Generando demo inteligente a partir del sitio web:', targetUrl);
 
     // Attempt to fetch homepage HTML metadata with timeout for resilience
@@ -400,17 +536,18 @@ Establece un nombre de marca elegante en español mexicano, un subtítulo descri
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s timeout
-      
+
       const fetchRes = await fetch(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
         },
+        redirect: 'manual', // don't silently follow redirects into internal hosts
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
       if (fetchRes.ok) {
-        const html = await fetchRes.text();
+        const html = (await fetchRes.text()).slice(0, 200000); // cap response size
         const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
         const metaMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
         
