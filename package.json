@@ -5,10 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "dev:connectx": "tsx server-connectx.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:connectx": "vite build && esbuild server-connectx.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/connectx-server.cjs",
     "start": "node dist/server.cjs",
+    "start:connectx": "node dist/connectx-server.cjs",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "core:check": "tsx src/core/selftest.ts",
+    "ci": "npm run lint && npm run core:check && npm run build:connectx"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

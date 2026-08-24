@@ -1,0 +1,32 @@
+image: node:22-bookworm
+
+stages:
+  - validate
+  - build
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+
+before_script:
+  - npm ci
+
+core_check:
+  stage: validate
+  script:
+    - npm run core:check
+
+build_connectx:
+  stage: build
+  script:
+    - npm run build:connectx
+  artifacts:
+    expire_in: 7 days
+    paths:
+      - dist/
