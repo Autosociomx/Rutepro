@@ -8,6 +8,7 @@ import { ConnectXStorefront } from './components/ConnectXStorefront.tsx';
 import { ConnectXGrowthLab } from './components/ConnectXGrowthLab.tsx';
 import { ConnectXLocalApp } from './components/ConnectXLocalApp.tsx';
 import { ConnectXRutasApp } from './components/ConnectXRutasApp.tsx';
+import { ConnectXSyncAgent } from './components/ConnectXSyncAgent.tsx';
 import './index.css';
 
 const params = new URLSearchParams(window.location.search);
@@ -18,6 +19,7 @@ const showConnectXStore = params.get('connectx_store') === '1';
 const showConnectXGrowth = params.get('connectx_growth') === '1';
 const showConnectXLocal = params.get('connectx_local') === '1';
 const showConnectXRoutes = params.get('connectx_routes') === '1';
+const isConnectX = showConnectX || showConnectXOS || showConnectXSetup || showConnectXStore || showConnectXGrowth || showConnectXLocal || showConnectXRoutes;
 
 const root = showConnectXSetup
   ? <ConnectXSetup />
@@ -36,5 +38,8 @@ const root = showConnectXSetup
               : <App />;
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{root}</StrictMode>,
+  <StrictMode>
+    {root}
+    {isConnectX && <ConnectXSyncAgent />}
+  </StrictMode>,
 );
