@@ -11,6 +11,8 @@ export * from './routeEngine';
 export * from './localEngine';
 export * from './commerceEngine';
 export * from './growthEngine';
+export * from './contentPlanner';
+export * from './creativePipeline';
 export * from './intelligence';
 export * from './httpIntelligence';
 export * from './offlineQueue';
