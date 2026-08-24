@@ -62,6 +62,8 @@ export interface RouteSale {
 export interface RouteClose {
   runId: ID;
   grossSales: Money;
+  cashSales: Money;
+  nonCashSales: Money;
   cashExpected: Money;
   cashDelivered: Money;
   creditCreated: Money;
