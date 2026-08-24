@@ -3,6 +3,8 @@ import { money } from './money';
 import { createIntelligence } from './intelligence';
 import { createLocalOrder, createProductionTasks, transitionOrder } from './localEngine';
 import { closeRoute, initialRouteState, recordSale, registerLoad, startRoute } from './routeEngine';
+import { createCommerceOrder, transitionCommerceOrder } from './commerceEngine';
+import { approveCampaign, createCampaign, transitionCampaign } from './growthEngine';
 
 const now = 1_725_000_000_000;
 
@@ -65,6 +67,37 @@ async function testLocalEngine() {
   assert.equal(tasks.value.tasks.length, 2);
 }
 
+async function testCommerceEngine() {
+  const created = createCommerceOrder({
+    id: 'web-order-1', tenantId: 'tenant-1', businessId: 'mora', locationId: 'local-1',
+    channel: 'web', fulfillment: 'pickup', campaignId: 'campaign-1', createdAt: now,
+    items: [{ productId: 'elote', productName: 'Elote preparado', quantity: 2, unitPrice: money(3500) }],
+    discountCents: 500,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error(created.error);
+  assert.equal(created.value.total.amountCents, 6500);
+  const submitted = transitionCommerceOrder(created.value, 'submitted', now + 1);
+  assert.equal(submitted.ok, true);
+}
+
+async function testGrowthApprovalGate() {
+  const created = createCampaign({
+    id: 'campaign-1', tenantId: 'tenant-1', businessId: 'mora', name: 'Fin de semana',
+    objective: 'sales', productIds: ['elote'], channels: ['instagram'], budgetCents: 300_000,
+    createdBy: 'owner-1', createdAt: now,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error(created.error);
+  const invalid = transitionCampaign(created.value, 'active');
+  assert.equal(invalid.ok, false);
+  const approved = approveCampaign(created.value, 'owner-1', now + 1);
+  assert.equal(approved.ok, true);
+  if (!approved.ok) throw new Error(approved.error);
+  const active = transitionCampaign(approved.value, 'active');
+  assert.equal(active.ok, true);
+}
+
 async function testNoAiFallback() {
   const intelligence = createIntelligence();
   const result = await intelligence.recommendRouteLoad({
@@ -78,5 +111,7 @@ async function testNoAiFallback() {
 
 await testRouteEngine();
 await testLocalEngine();
+await testCommerceEngine();
+await testGrowthApprovalGate();
 await testNoAiFallback();
 console.log('ConnectX Negocio OS core self-test: OK');
