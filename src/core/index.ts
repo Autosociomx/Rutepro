@@ -11,3 +11,4 @@ export * from './intelligence';
 export * from './offlineQueue';
 export * from './permissions';
 export * from './legacyRouteProAdapter';
+export * from './legacyMoraAdapter';
