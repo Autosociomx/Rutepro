@@ -10,6 +10,8 @@ export * from './localEngine';
 export * from './intelligence';
 export * from './httpIntelligence';
 export * from './offlineQueue';
+export * from './eventStore';
 export * from './permissions';
+export * from './templates';
 export * from './legacyRouteProAdapter';
 export * from './legacyMoraAdapter';
