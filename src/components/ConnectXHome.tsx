@@ -3,8 +3,8 @@ import { ArrowRight, BrainCircuit, Globe2, LayoutDashboard, Route, Settings2, St
 import type { BusinessConfig } from '../core/businessConfig';
 
 const modules = [
-  { key: 'local', title: 'ConnectX Local', description: 'Mesas, comandas, producción, mostrador, impresión y caja.', icon: Store, href: '?connectx_os=1&mode=local' },
-  { key: 'routes', title: 'ConnectX Rutas', description: 'Carga, reparto, GPS, venta, devolución, fiado y cierre.', icon: Route, href: '?connectx_os=1&mode=routes' },
+  { key: 'local', title: 'ConnectX Local', description: 'Mesas, comandas, producción, mostrador, impresión y caja.', icon: Store, href: '?connectx_local=1' },
+  { key: 'routes', title: 'ConnectX Rutas', description: 'Carga, reparto, GPS, venta, devolución, fiado y cierre.', icon: Route, href: '?connectx_routes=1' },
   { key: 'web', title: 'ConnectX Web', description: 'Catálogo público, pedido directo y atribución de campaña.', icon: Globe2, href: '?connectx_store=1' },
   { key: 'growth', title: 'ConnectX Growth', description: 'Datos, contenido, creativos, campañas y control humano.', icon: BrainCircuit, href: '?connectx_growth=1' },
 ] as const;
