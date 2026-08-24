@@ -8,6 +8,7 @@ export * from './money';
 export * from './routeEngine';
 export * from './localEngine';
 export * from './intelligence';
+export * from './httpIntelligence';
 export * from './offlineQueue';
 export * from './permissions';
 export * from './legacyRouteProAdapter';
