@@ -5,6 +5,7 @@
 
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import dns from 'dns/promises';
 import net from 'net';
 import { createServer as createViteServer } from 'vite';
@@ -102,6 +103,7 @@ async function assertPublicHttpUrl(rawUrl: string): Promise<void> {
     throw new Error('Host no permitido (rango privado)');
   }
 }
+
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -522,7 +524,7 @@ Establece un nombre de marca elegante en español mexicano, un subtítulo descri
       targetUrl = 'https://' + targetUrl;
     }
 
-    // SSRF guard: reject internal/loopback/metadata targets before fetching.
+    // SSRF guard: reject anything that is not a public http(s) endpoint.
     try {
       await assertPublicHttpUrl(targetUrl);
     } catch (guardErr: any) {
@@ -536,7 +538,7 @@ Establece un nombre de marca elegante en español mexicano, un subtítulo descri
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s timeout
-
+      
       const fetchRes = await fetch(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
@@ -1037,7 +1039,13 @@ FORMATO DE SALIDA:
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    // The bundled server lives inside dist/ next to index.html, so resolve the
+    // assets relative to the bundle instead of the working directory: a service
+    // started from anywhere else (systemd, a container entrypoint) would
+    // otherwise serve 404 for every page while /api kept answering.
+    const candidatos = [__dirname, path.join(process.cwd(), 'dist'), process.cwd()];
+    const distPath = candidatos.find((dir) => fs.existsSync(path.join(dir, 'index.html'))) || __dirname;
+
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

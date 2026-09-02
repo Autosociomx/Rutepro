@@ -98,8 +98,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
   const [pinConfirm, setPinConfirm] = useState('');
   const [pinError, setPinError] = useState('');
   // Whether the owner has already created a real admin PIN on this device.
-  // The PIN is kept only in device-local storage (never synced to the public
-  // Firestore config), so it isn't world-readable.
+  // The PIN is kept only in device-local storage (never synced to the cloud),
+  // so a leaked database row can't unlock the owner's panel.
   const [pinConfigured, setPinConfigured] = useState<boolean>(() => {
     try {
       return !!localStorage.getItem('rp_admin_pin');
@@ -230,13 +230,6 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
     };
   }, [cfg.color_principal]);
 
-  const openAdminLock = () => {
-    setAdminPin('');
-    setPinConfirm('');
-    setPinError('');
-    setShowAdminLock(true);
-  };
-
   const closeAdminLock = () => {
     setShowAdminLock(false);
     setAdminPin('');
@@ -244,8 +237,11 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
     setPinError('');
   };
 
-  const enterAdmin = () => {
-    closeAdminLock();
+  const grantAdminAccess = () => {
+    setShowAdminLock(false);
+    setAdminPin('');
+    setPinConfirm('');
+    setPinError('');
     onGo('admin');
   };
 
@@ -271,7 +267,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
       }
       setPinConfigured(true);
       triggerToast('✓ PIN de administrador creado');
-      enterAdmin();
+      grantAdminAccess();
       return;
     }
 
@@ -282,12 +278,13 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
     } catch {
       stored = '';
     }
+
     if (!pin) {
       setPinError('Ingresa la clave de administración');
       return;
     }
     if (pin === stored) {
-      enterAdmin();
+      grantAdminAccess();
     } else {
       setPinError('Clave incorrecta');
     }
@@ -312,7 +309,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
         {/* Animated App Logo Wrapper (Secret gateway to Owner Console) */}
         <button 
           type="button"
-          onClick={openAdminLock}
+          onClick={() => setShowAdminLock(true)}
           title="Acceso de Administración"
           className="w-20 h-20 rounded-2xl bg-[#111520] border flex items-center justify-center font-display font-extrabold text-3xl mb-8 shadow-xl overflow-hidden p-1.5 transition-all duration-500 hover:scale-105 cursor-pointer hover:brightness-110 active:scale-95 group focus:outline-none"
           style={{ borderColor: `${cfg.color_principal || '#C9912A'}45`, boxShadow: `0 10px 30px -10px ${cfg.color_principal || '#C9912A'}40` }}
@@ -397,6 +394,13 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
               </div>
               
               <div className="grid grid-cols-2 gap-3.5">
+                <button 
+                  onClick={() => onGo('dashboard')} 
+                  className="bg-[#111520] border border-white/5 p-4 rounded-xl flex flex-col items-center gap-2 hover:border-amber-500/50 transition-all cursor-pointer group"
+                >
+                  <span className="text-xl">📊</span>
+                  <span className="text-[10px] font-bold text-[#EEF1F8]">Dashboard</span>
+                </button>
                 <button 
                   onClick={() => onGo('repartidor')}
                   className="flex flex-col items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer transition-all active:scale-95 border bg-[#C9912A]/10 backdrop-blur-sm"
@@ -503,14 +507,14 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                 <label className="text-[10px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">
                   {pinConfigured ? 'Clave de Acceso' : 'Nuevo PIN'}
                 </label>
-                <input
-                  type="password"
+                <input 
+                  type="password" 
                   inputMode="numeric"
-                  value={adminPin}
+                  value={adminPin} 
                   onChange={(e) => {
                     setAdminPin(e.target.value);
                     setPinError('');
-                  }}
+                  }} 
                   onKeyDown={(e) => e.key === 'Enter' && handleValidatePin()}
                   className="bg-[#181D2B] border border-white/5 rounded-lg px-3.5 py-2.5 text-sm tracking-widest text-[#EEF1F8] placeholder-[#3E4A60] focus:outline-none focus:border-purple-500 w-full"
                   placeholder="••••"
@@ -533,19 +537,22 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
                 {pinError && (
                   <span className="text-[10px] text-red-400 font-semibold">⚠️ {pinError}</span>
                 )}
+                <span className="text-[10px] text-[#3E4A60] leading-normal">
+                  El PIN se guarda solo en este dispositivo. Si lo olvidas, se restablece borrando los datos del navegador.
+                </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-2 pt-2.5">
-              <button
+              <button 
                 type="button"
                 onClick={handleValidatePin}
                 className="w-full py-2.5 rounded-lg text-xs font-bold text-center bg-purple-500 text-white hover:bg-purple-400 active:scale-97 cursor-pointer transition-all"
               >
-                {pinConfigured ? 'Validar e Ingresar' : 'Guardar PIN y Entrar'}
+                {pinConfigured ? 'Validar e Ingresar' : 'Crear PIN y Entrar'}
               </button>
 
-              <button
+              <button 
                 type="button"
                 onClick={closeAdminLock}
                 className="w-full py-2 rounded-lg text-xs font-semibold text-center text-[#3E4A60] hover:text-[#8A93A8] cursor-pointer transition-all"

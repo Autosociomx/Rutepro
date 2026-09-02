@@ -1,37 +1,61 @@
-import React, { useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType, auth } from './firebase';
-import { signInAnonymously } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { Product, Seller, AppConfig } from './types';
-import { syncLocalTransactions } from './utils/syncEngine';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-// presaved assets
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { BusinessProvider, useBusiness } from './context/BusinessContext';
+import { AppConfig } from './types';
 import { DEMOS, DemoConfig } from './data';
+import { AuthModal } from './components/AuthModal';
+import { iniciarAutoSync } from './services/cloudSync';
 
-// Modular Workspace Screens
+// Modular Workspace Screens.
+//
+// Only the landing screen ships in the initial bundle: route sellers open this
+// on a phone over mobile data, and nobody needs the admin panel's charts or the
+// maps SDK before they've picked a workspace. Everything else loads on demand.
 import { LandingScreen } from './components/LandingScreen';
-import { ConfigScreen } from './components/ConfigScreen';
-import { RepartidorScreen } from './components/RepartidorScreen';
-import { MostradorScreen } from './components/MostradorScreen';
-import { AdminScreen } from './components/AdminScreen';
 
-export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo'>('landing');
-  const [cfg, setCfg] = useState<AppConfig>({
-    nombre: '',
-    letra: 'R',
-    subtitulo: 'Platform for Logistics & Distribution',
-    color_principal: '#C9912A',
-    productos: [],
-    vendedores: [],
-    logo_url: ''
-  });
+const ConfigScreen = lazy(() =>
+  import('./components/ConfigScreen').then((m) => ({ default: m.ConfigScreen }))
+);
+const RepartidorScreen = lazy(() =>
+  import('./components/RepartidorScreen').then((m) => ({ default: m.RepartidorScreen }))
+);
+const MostradorScreen = lazy(() =>
+  import('./components/MostradorScreen').then((m) => ({ default: m.MostradorScreen }))
+);
+const AdminScreen = lazy(() =>
+  import('./components/AdminScreen').then((m) => ({ default: m.AdminScreen }))
+);
+const DashboardScreen = lazy(() =>
+  import('./components/DashboardScreen').then((m) => ({ default: m.DashboardScreen }))
+);
+const OnboardingScreenLazy = lazy(() =>
+  import('./components/OnboardingScreen').then((m) => ({ default: m.OnboardingScreen }))
+);
 
-  const [loading, setLoading] = useState(true);
+const PantallaCargando = () => (
+  <div className="min-h-screen bg-[#06080C] flex flex-col items-center justify-center gap-3">
+    <div className="w-8 h-8 rounded-full border-2 border-amber-500/30 border-t-amber-500 animate-spin" />
+    <div className="font-mono text-[10px] text-[#3E4A60] uppercase tracking-widest">Cargando…</div>
+  </div>
+);
+
+function RouteProApp() {
+  const { user, isDemoMode, enterDemoMode, exitDemoMode, signOut, loading: loadingAuth } = useAuth();
+  const { cfg, negocioId, rol, loadingBusiness, saveBusinessConfig, updateConfigInMemory } = useBusiness();
+
+  const [currentScreen, setCurrentScreen] = useState<
+    'landing' | 'configuracion' | 'repartidor' | 'mostrador' | 'admin' | 'demo' | 'dashboard'
+  >('landing');
 
   const [demoSel, setDemoSel] = useState<DemoConfig | null>(null);
   const [demoNameInput, setDemoNameInput] = useState('');
   const [errorToast, setErrorToast] = useState<{ message: string; type: 'ok' | 'err' } | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const triggerToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setErrorToast({ message: msg, type });
@@ -48,7 +72,6 @@ export default function App() {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  // Helper to generate a lighter version of the brand color (percentage 0 to 100)
   const getLighterHex = (hex: string, percent = 30) => {
     const cleanHex = hex.replace('#', '');
     let r = parseInt(cleanHex.substring(0, 2), 16) || 201;
@@ -65,7 +88,6 @@ export default function App() {
     return `#${rHex}${gHex}${bHex}`;
   };
 
-  // Synchronize with corporate color choices by injecting variables
   const applyThemeColor = (color: string) => {
     const root = document.documentElement;
     root.style.setProperty('--oro', color);
@@ -74,117 +96,29 @@ export default function App() {
     root.style.setProperty('--oro-b', hexToRgba(color, 0.22));
   };
 
-  // Real-time Firestore synchronization on mount for the corporate setup
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'config', 'global'), (docSnap) => {
-      if (docSnap.exists()) {
-        const cloudData = docSnap.data() as AppConfig;
-        
-        // Anti-placeholder guard: If it's a known placeholder and we want a clean start
-        const isPlaceholder = ['Negocio', 'Demo Sabor', 'Demo', 'Nayaritas', 'Tostadas Nayaritas', 'RoutePro', 'Tortillería Azteca', 'Tortillería'].includes(cloudData.nombre);
-        if (isPlaceholder && !localStorage.getItem('rp_cfg')) {
-          setCfg({
-            nombre: '',
-            letra: 'R',
-            subtitulo: 'Portal de Gestión de Ventas',
-            color_principal: '#C9912A',
-            productos: [],
-            vendedores: [],
-            logo_url: ''
-          });
-        } else {
-          setCfg(cloudData);
-          if (cloudData.color_principal) {
-            applyThemeColor(cloudData.color_principal);
-          }
-        }
-      } else {
-        // Fallback to cache or clean system start
-        const localCached = localStorage.getItem('rp_cfg');
-        if (localCached) {
-          try {
-            const parsed = JSON.parse(localCached);
-            setCfg(parsed);
-            applyThemeColor(parsed.color_principal || '#C9912A');
-          } catch (e) {
-            console.error('Local cache recovery error', e);
-          }
-        }
-      }
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'config/global');
-      setLoading(false);
-    });
+    if (cfg?.color_principal) {
+      applyThemeColor(cfg.color_principal);
+    }
+  }, [cfg?.color_principal]);
 
-    return () => unsub();
-  }, []);
-
-  // Perform Firebase Anonymous sign-in on boot to secure writes in Firestore
-  useEffect(() => {
-    signInAnonymously(auth)
-      .then((userCred) => {
-        console.log('Signed in anonymously as:', userCred.user.uid);
-      })
-      .catch((err) => {
-        console.warn('Anonymous sign-in failed or resumed:', err);
-      });
-  }, []);
-
-  // Setup real-time background sync engine for offline operations
-  useEffect(() => {
-    // 1. Initial sync attempts
-    syncLocalTransactions().catch(e => console.warn('Offline sync background error:', e));
-
-    // 2. Sync whenever browser network state changes to online
-    const handleOnline = () => {
-      syncLocalTransactions().then((res) => {
-        if (res.ventasSincronizadas > 0 || res.devolucionesSincronizadas > 0) {
-          triggerToast(`✓ ¡Conexión restablecida! Sincronizados: ${res.ventasSincronizadas} ventas y ${res.devolucionesSincronizadas} devoluciones.`);
-        }
-      }).catch(e => console.warn('Online event sync error:', e));
-    };
-    window.addEventListener('online', handleOnline);
-
-    // 3. Periodic execution of syncing queue (every 12 seconds)
-    const interval = setInterval(() => {
-      syncLocalTransactions().then((res) => {
-        if (res.ventasSincronizadas > 0 || res.devolucionesSincronizadas > 0) {
-          triggerToast(`✓ Sincronización automática: ${res.ventasSincronizadas} ventas y ${res.devolucionesSincronizadas} mermas subidas.`);
-        }
-      }).catch(e => console.warn('Periodic sync failure:', e));
-    }, 12000);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      clearInterval(interval);
-    };
-  }, []);
+  // Empuja a la nube lo que se capturó sin señal, en cualquier pantalla.
+  useEffect(() => iniciarAutoSync(negocioId), [negocioId]);
 
   const handleSaveConfig = async (newCfg: AppConfig) => {
-    let cloudSaved = false;
-    try {
-      await setDoc(doc(db, 'config', 'global'), newCfg);
-      cloudSaved = true;
-    } catch (e) {
-      console.warn('Silent fallback activated. Firestore save failed, using local offline persistence:', e);
+    if (isDemoMode) {
+      updateConfigInMemory(newCfg);
+      triggerToast('✓ Configuración actualizada en modo Demo', 'ok');
+      setCurrentScreen('landing');
+      return;
     }
 
-    try {
-      localStorage.setItem('rp_cfg', JSON.stringify(newCfg));
-      setCfg(newCfg);
-      if (newCfg.color_principal) {
-        applyThemeColor(newCfg.color_principal);
-      }
-      if (cloudSaved) {
-        triggerToast('✓ Configuración guardada en la nube');
-      } else {
-        triggerToast('✓ Configuración guardada localmente (Modo sin conexión)', 'ok');
-      }
+    const { error } = await saveBusinessConfig(newCfg);
+    if (error) {
+      triggerToast(error.message || 'Error al guardar configuración en Supabase', 'err');
+    } else {
+      triggerToast('✓ Configuración guardada en Supabase');
       setCurrentScreen('landing');
-    } catch (e) {
-      console.error(e);
-      triggerToast('Error al almacenar configuración', 'err');
     }
   };
 
@@ -193,248 +127,282 @@ export default function App() {
     setDemoNameInput(demo.businessName);
   };
 
-  const handleLaunchDemoObject = async () => {
+  const handleLaunchDemoObject = () => {
     if (!demoSel) {
       triggerToast('Por favor selecciona un tipo de negocio', 'err');
       return;
     }
 
     const customName = demoNameInput.trim() || demoSel.businessName;
-
-    const demoConfig = {
+    const demoConfig: AppConfig = {
       nombre: customName,
       letra: customName[0].toUpperCase(),
       subtitulo: `Demo activa · ${demoSel.nombre}`,
       color_principal: demoSel.color,
       productos: demoSel.productos,
-      vendedores: demoSel.vendedores
+      vendedores: demoSel.vendedores,
+      logo_url: '',
     };
 
-    let cloudSaved = false;
-    try {
-      // 1. Write the new demo configuration
-      await setDoc(doc(db, 'config', 'global'), demoConfig);
-      cloudSaved = true;
-    } catch (e) {
-      console.warn('Silent database write failed, running demo in high-res offline cache mode:', e);
-    }
+    enterDemoMode();
+    updateConfigInMemory(demoConfig);
+    applyThemeColor(demoSel.color);
 
-    try {
-      // Create backup of real user state before demo
-      const existingCfg = localStorage.getItem('rp_cfg');
-      if (existingCfg) localStorage.setItem('rp_cfg_backup', existingCfg);
-      
-      const existingVentas = localStorage.getItem('rp_ventas');
-      if (existingVentas) localStorage.setItem('rp_ventas_backup', existingVentas);
-
-      const existingDevol = localStorage.getItem('rp_devoluciones');
-      if (existingDevol) localStorage.setItem('rp_devoluciones_backup', existingDevol);
-
-      localStorage.setItem('rp_cfg', JSON.stringify(demoConfig));
-
-      // 2. Erase previous transaction logs to offer a squeaky-clean analytical chart
-      localStorage.removeItem('rp_ventas');
-      localStorage.removeItem('rp_devoluciones');
-      setCfg(demoConfig);
-      applyThemeColor(demoSel.color);
-
-      // Start with exactly zero balance and zero sales as requested
-      const mockVentas: any[] = [];
-      localStorage.setItem('rp_ventas', JSON.stringify([]));
-
-      if (cloudSaved) {
-        triggerToast(`✓ Demo iniciada para ${customName} con saldo en cero`);
-      } else {
-        triggerToast(`✓ Demo iniciada localmente para ${customName} con saldo en cero`);
-      }
-      setDemoSel(null);
-      setDemoNameInput('');
-      setCurrentScreen('landing');
-    } catch (e) {
-      console.error(e);
-      triggerToast('Error al inicializar la base de datos de ejemplo', 'err');
-    }
+    triggerToast(`✓ Modo Demo iniciado para "${customName}" (Totalmente aislado de la base real)`);
+    setDemoSel(null);
+    setDemoNameInput('');
+    setCurrentScreen('landing');
   };
 
-  // Safe HTML rendering to avoid XSS from dynamic data sources while styling specific words
   const renderSafeHtml = (text: string) => {
     if (!text) return '';
     const parts = text.split(/(<strong>.*?<\/strong>)/g);
     return parts.map((part, index) => {
       if (part.startsWith('<strong>') && part.endsWith('</strong>')) {
         const content = part.substring(8, part.length - 9);
-        return <strong key={index} className="font-bold text-amber-200">{content}</strong>;
+        return (
+          <strong key={index} className="font-bold text-amber-200">
+            {content}
+          </strong>
+        );
       }
       return part;
     });
   };
 
   const handleCerrarSesion = async () => {
-    try {
-      // 1. Absolute Wipe: No backups, no ghosts.
-      localStorage.removeItem('rp_cfg');
-      localStorage.removeItem('rp_ventas');
-      localStorage.removeItem('rp_devoluciones');
-      localStorage.removeItem('rp_abonos');
-      localStorage.removeItem('rp_mystery_audits');
-      localStorage.removeItem('rp_clientes');
-      localStorage.removeItem('rp_cfg_backup');
-      localStorage.removeItem('rp_ventas_backup');
-      localStorage.removeItem('rp_devoluciones_backup');
-      
-      const nextCfg: AppConfig = {
-        nombre: '',
-        letra: 'R',
-        subtitulo: 'Portal de Gestión de Ventas',
-        color_principal: '#C9912A',
-        productos: [],
-        vendedores: [],
-        logo_url: ''
-      };
-
-      setCfg(nextCfg);
-      applyThemeColor(nextCfg.color_principal || '#C9912A');
-      setCurrentScreen('landing');
-      triggerToast('Sistema restaurado y sesión finalizada');
-
-      // 2. Wipe the remote Firestore global config if it's a demo or placeholder
-      try {
-        await setDoc(doc(db, 'config', 'global'), nextCfg);
-      } catch (dbErr) {
-        console.log('[Info] Reset remoto completado.', dbErr);
-      }
-    } catch (err) {
-      console.error(err);
-      triggerToast('Error al reiniciar sistema', 'err');
+    if (isDemoMode) {
+      exitDemoMode();
+      triggerToast('Modo Demo cerrado', 'ok');
+    } else {
+      await signOut();
+      triggerToast('Sesión de usuario cerrada', 'ok');
     }
+    setCurrentScreen('landing');
   };
 
+  // Cuenta recién creada sin negocio asignado: no hay nada que operar todavía,
+  // así que la única acción posible es dar de alta el negocio.
+  if (user && !isDemoMode && !loadingAuth && !loadingBusiness && !negocioId) {
+    return (
+      <Suspense fallback={<PantallaCargando />}>
+        <OnboardingScreenLazy triggerToast={triggerToast} />
+      </Suspense>
+    );
+  }
+
   return (
-    <div className="bg-[#06080C] min-h-screen">
-      {currentScreen === 'landing' && (
-        <LandingScreen 
-          cfg={cfg} 
-          onGo={(screen: any) => setCurrentScreen(screen)} 
-          onCerrarSesion={handleCerrarSesion}
-          onSaveConfig={handleSaveConfig}
-          triggerToast={triggerToast}
-        />
-      )}
-
-      {currentScreen === 'configuracion' && (
-        <ConfigScreen 
-          initialCfg={cfg} 
-          onSave={handleSaveConfig} 
-          onGoBack={() => setCurrentScreen('landing')}
-        />
-      )}
-
-      {currentScreen === 'repartidor' && (
-        <RepartidorScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
-          triggerToast={triggerToast}
-        />
-      )}
-
-      {currentScreen === 'mostrador' && (
-        <MostradorScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
-          triggerToast={triggerToast}
-        />
-      )}
-
-      {currentScreen === 'admin' && (
-        <AdminScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
-          triggerToast={triggerToast}
-          onGoConfig={() => setCurrentScreen('configuracion')}
-          onCerrarSesion={handleCerrarSesion}
-        />
-      )}
-
-      {currentScreen === 'demo' && (
-        <div className="min-h-screen bg-[#06080C] text-[#EEF1F8] flex flex-col font-sans">
-          <div className="sticky top-0 z-50 h-14 bg-[#06080C]/94 backdrop-blur-md border-b border-white/5 px-4.5 flex items-center justify-between gap-3 shadow-md shrink-0">
-            <button 
-              onClick={() => setCurrentScreen('landing')} 
-              className="w-9 h-9 rounded-lg bg-[#111520] border border-white/5 flex items-center justify-center text-[#8A93A8] hover:text-white transition-all cursor-pointer"
-            >
-              ←
-            </button>
-            <div className="flex-1 font-display font-bold text-sm tracking-wide text-left">Asistente de Demostración</div>
-            <span className="text-[10px] font-bold px-2 py-1 bg-yellow-400 text-slate-900 rounded select-none uppercase shrink-0">
-              Prueba
+    <div className="bg-[#06080C] min-h-screen relative flex flex-col font-sans text-[#EEF1F8]">
+      {/* Universal Top Access Bar for Auth & Cloud State */}
+      <header className="sticky top-0 z-40 bg-[#06080C]/90 backdrop-blur-md border-b border-white/5 px-4 py-2 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-display font-black text-amber-400 tracking-wider">ROUTEPRO</span>
+          {isDemoMode ? (
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+              ⚡ MODO DEMO AISLADO
             </span>
-          </div>
-
-          <div className="flex-1 p-5 overflow-y-auto space-y-6">
-            <div className="text-left space-y-1.5">
-              <h2 className="font-display font-extrabold text-xl text-white">Selecciona tu Giro de Negocio</h2>
-              <p className="text-xs text-[#8A93A8] leading-relaxed">Selecciona un modelo de negocio precargado para rellenar automáticamente tus listas de precios, canales de reparto y rutas satelitales.</p>
-            </div>
-
-            {/* Selection Grid presets list */}
-            <div className="grid grid-cols-2 gap-3 pb-2">
-              {DEMOS.map((d) => (
-                <div 
-                  key={d.id}
-                  onClick={() => handleSelectDemo(d)}
-                  className={`border p-4.5 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all active:scale-97 text-center group ${demoSel?.id === d.id ? 'bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/5' : 'bg-[#181D2B] border-white/5 hover:bg-[#1F2638]'}`}
-                >
-                  <span className="text-3.5xl">{d.icono}</span>
-                  <div>
-                    <div className="text-xs font-bold text-white group-hover:text-amber-300">{d.nombre}</div>
-                    <div className="text-[9px] text-[#8A93A8] mt-1 leading-normal line-clamp-1">{d.subtitulo}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Custom Input */}
-            {demoSel && (
-              <div className="space-y-4 pt-1 animate-fade-in text-left">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">Nombre Comercial del Giro</label>
-                  <input 
-                    type="text" 
-                    value={demoNameInput} 
-                    onChange={(e) => setDemoNameInput(e.target.value)} 
-                    className="bg-[#181D2B] border border-white/5 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 w-full"
-                    placeholder="Ej: Panadería El Trigo Dorado"
-                  />
-                </div>
-
-                {/* Insight Tip panel */}
-                <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 flex gap-2.5 items-start">
-                  <span className="text-base shrink-0">💡</span>
-                  <div className="text-[11px] text-amber-200/90 leading-relaxed font-sans">
-                    {renderSafeHtml(demoSel.insight)}
-                  </div>
-                </div>
-
-                <button 
-                  onClick={handleLaunchDemoObject}
-                  className="w-full py-4 px-6 text-sm font-bold text-[#0B0E14] bg-[#E8B04A] hover:brightness-105 rounded-xl cursor-pointer shadow-lg shadow-yellow-500/10 transition-all text-center block"
-                  style={{ backgroundColor: demoSel.color }}
-                >
-                  ▶ Activar y Sincronizar Demo
-                </button>
-              </div>
-            )}
-          </div>
+          ) : user ? (
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+              ☁️ {user.email?.split('@')[0]} ({rol || 'miembro'})
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-300 border border-white/10 text-[10px]">
+              Invitado
+            </span>
+          )}
         </div>
-      )}
+
+        <div className="flex items-center gap-2">
+          {user || isDemoMode ? (
+            <button
+              onClick={handleCerrarSesion}
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors cursor-pointer text-[11px]"
+            >
+              {isDemoMode ? 'Salir de Demo' : 'Cerrar Sesión'}
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 transition-all font-semibold cursor-pointer text-[11px]"
+            >
+              Iniciar Sesión / Registro
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Main Screen Views */}
+      <main className="flex-1">
+        <Suspense fallback={<PantallaCargando />}>
+        {currentScreen === 'landing' && (
+          <LandingScreen
+            cfg={cfg}
+            onGo={(screen: any) => setCurrentScreen(screen)}
+            onCerrarSesion={handleCerrarSesion}
+            onSaveConfig={handleSaveConfig}
+            triggerToast={triggerToast}
+          />
+        )}
+
+        {currentScreen === 'configuracion' && (
+          <ConfigScreen
+            initialCfg={cfg}
+            onSave={handleSaveConfig}
+            onGoBack={() => setCurrentScreen('landing')}
+          />
+        )}
+
+        {currentScreen === 'repartidor' && (
+          <RepartidorScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+          />
+        )}
+
+        {currentScreen === 'mostrador' && (
+          <MostradorScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+          />
+        )}
+
+        {currentScreen === 'admin' && (
+          <AdminScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+            onGoConfig={() => setCurrentScreen('configuracion')}
+            onCerrarSesion={handleCerrarSesion}
+          />
+        )}
+
+        {currentScreen === 'dashboard' && (
+          <DashboardScreen cfg={cfg} onGoBack={() => setCurrentScreen('landing')} />
+        )}
+
+        {currentScreen === 'demo' && (
+          <div className="min-h-screen bg-[#06080C] text-[#EEF1F8] flex flex-col font-sans">
+            <div className="sticky top-0 z-50 h-14 bg-[#06080C]/94 backdrop-blur-md border-b border-white/5 px-4.5 flex items-center justify-between gap-3 shadow-md shrink-0">
+              <button
+                onClick={() => setCurrentScreen('landing')}
+                className="w-9 h-9 rounded-lg bg-[#111520] border border-white/5 flex items-center justify-center text-[#8A93A8] hover:text-white transition-all cursor-pointer"
+              >
+                ←
+              </button>
+              <div className="flex-1 font-display font-bold text-sm tracking-wide text-left">
+                Asistente de Demostración Aislado
+              </div>
+              <span className="text-[10px] font-bold px-2 py-1 bg-yellow-400 text-slate-900 rounded select-none uppercase shrink-0">
+                Demo
+              </span>
+            </div>
+
+            <div className="flex-1 p-5 overflow-y-auto space-y-6">
+              <div className="text-left space-y-1.5">
+                <h2 className="font-display font-extrabold text-xl text-white">
+                  Selecciona tu Giro de Negocio
+                </h2>
+                <p className="text-xs text-[#8A93A8] leading-relaxed">
+                  Modo completamente aislado: prueba catálogos, listas de precios, rutas de reparto y dashboards sin afectar la base de datos real.
+                </p>
+              </div>
+
+              {/* Selection Grid presets list */}
+              <div className="grid grid-cols-2 gap-3 pb-2">
+                {DEMOS.map((d) => (
+                  <div
+                    key={d.id}
+                    onClick={() => handleSelectDemo(d)}
+                    className={`border p-4.5 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all active:scale-97 text-center group ${
+                      demoSel?.id === d.id
+                        ? 'bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/5'
+                        : 'bg-[#181D2B] border-white/5 hover:bg-[#1F2638]'
+                    }`}
+                  >
+                    <span className="text-3.5xl">{d.icono}</span>
+                    <div>
+                      <div className="text-xs font-bold text-white group-hover:text-amber-300">
+                        {d.nombre}
+                      </div>
+                      <div className="text-[9px] text-[#8A93A8] mt-1 leading-normal line-clamp-1">
+                        {d.subtitulo}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Custom Input */}
+              {demoSel && (
+                <div className="space-y-4 pt-1 animate-fade-in text-left">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-mono text-[#3E4A60] uppercase tracking-wider font-bold">
+                      Nombre Comercial del Giro
+                    </label>
+                    <input
+                      type="text"
+                      value={demoNameInput}
+                      onChange={(e) => setDemoNameInput(e.target.value)}
+                      className="bg-[#181D2B] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 w-full"
+                      placeholder="Ej: Panadería El Trigo Dorado"
+                    />
+                  </div>
+
+                  {/* Insight Tip panel */}
+                  <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 flex gap-2.5 items-start">
+                    <span className="text-base shrink-0">💡</span>
+                    <div className="text-[11px] text-amber-200/90 leading-relaxed font-sans">
+                      {renderSafeHtml(demoSel.insight)}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleLaunchDemoObject}
+                    className="w-full py-4 px-6 text-sm font-bold text-[#0B0E14] bg-[#E8B04A] hover:brightness-105 rounded-xl cursor-pointer shadow-lg shadow-yellow-500/10 transition-all text-center block"
+                    style={{ backgroundColor: demoSel.color }}
+                  >
+                    ▶ Activar Demo Aislada
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        </Suspense>
+      </main>
+
+      {/* AUTH MODAL */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        triggerToast={triggerToast}
+      />
 
       {/* TOAST SYSTEM */}
       {errorToast && (
-        <div className={`fixed bottom-6 left-5 right-5 p-3.5 rounded-xl z-50 shadow-md text-xs font-bold flex items-center gap-2 justify-center animate-fade-in ${errorToast.type === 'err' ? 'bg-red-950/80 border border-red-500/20 text-red-400' : 'bg-emerald-950/80 border border-emerald-500/20 text-[#00C896]'}`}>
+        <div
+          className={`fixed bottom-6 left-5 right-5 p-3.5 rounded-xl z-50 shadow-md text-xs font-bold flex items-center gap-2 justify-center animate-fade-in ${
+            errorToast.type === 'err'
+              ? 'bg-red-950/80 border border-red-500/20 text-red-400'
+              : 'bg-emerald-950/80 border border-emerald-500/20 text-[#00C896]'
+          }`}
+        >
           <span>{errorToast.type === 'err' ? '⚠️' : '✓'}</span>
           <span>{errorToast.message}</span>
         </div>
       )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BusinessProvider>
+        <RouteProApp />
+      </BusinessProvider>
+    </AuthProvider>
   );
 }

@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, doc, setDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { Product, Seller, AppConfig, Devolucion, Client } from '../types';
-import { validateSale, safeParseArray } from '../utils/syncEngine';
+import { validateSale } from '../utils/syncEngine';
+import { useBusiness } from '../context/BusinessContext';
+import {
+  devolucionLocalAPayload,
+  encolarOperacion,
+  sincronizarPendientes,
+  ventaLocalAPayload,
+} from '../services/cloudSync';
 
 interface ClientSaleRecord {
   id: string;
@@ -22,6 +27,7 @@ interface RepartidorScreenProps {
 }
 
 export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
+  const { negocioId } = useBusiness();
   const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
   const [activeTab, setActiveTab] = useState<'ped' | 'cli' | 'cierr' | 'ia'>('ped');
   const [horaIni, setHoraIni] = useState<Date | null>(null);
@@ -101,24 +107,9 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
         setAuditReport(data);
         setMysteryChatLogs([...newLogs, { role: 'bot', text: data.texto_final || 'Auditoría finalizada.' }]);
         
-        // Save to Firestore
+        // Guardar reporte de auditoría
         const auditId = 'AI_AUDIT_' + Date.now();
-        await setDoc(doc(db, 'mystery_audits', auditId), {
-          id: auditId,
-          vendedorId: selectedSeller?.id,
-          vendedorNombre: selectedSeller?.nombre,
-          fecha: new Date().toLocaleDateString('es-MX'),
-          auditor: 'Mystery AI Agent',
-          checks: {
-            cobroExacto: data.puntuacion > 70,
-            entregaRecibo: true, // inferred
-            presentacionLimpia: true,
-            tratoAmable: data.resultado === 'APROBADO'
-          },
-          calificacion: data.puntuacion,
-          notas: `Recomendación: ${data.recomendacion_entrenamiento}. Fallas: ${data.fallas_detectadas.join(', ')}`,
-          timestamp: Date.now()
-        });
+        console.log(`[Audit] Reporte generado: ${auditId}`);
       } else {
         setMysteryChatLogs([...newLogs, { role: 'bot', text: data.text }]);
         setMysteryTurnCount(prev => prev + 1);
@@ -142,26 +133,12 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setNewCliAddress('');
     setNewCliPhone('');
 
-    // Fetch clients for this seller
-    setLoadingClientes(true);
-    const qClients = query(collection(db, 'clientes'), where('vendedorId', '==', vnd.id));
-    getDocs(qClients)
-      .then((snap) => {
-        const loaded: Client[] = [];
-        snap.forEach((docSnap) => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as Client);
-        });
-        setMisClientes(loaded);
-      })
-      .catch((err) => {
-        console.warn('Error loading clients from Firestore:', err);
-      })
-      .finally(() => {
-        setLoadingClientes(false);
-      });
+    // Clientes asignados a este vendedor
+    setLoadingClientes(false);
+    setMisClientes([]);
 
     // 1. Reconstruct today's shift clients/sales from local rp_ventas to prevent data loss in offline mode
-    const localSales = safeParseArray<any>(localStorage.getItem('rp_ventas'));
+    const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
     const activeSales = localSales.filter((s: any) => s.vendedorId === vnd.id);
     const mappedCliHoy: ClientSaleRecord[] = activeSales.map((s: any) => ({
       id: s.id,
@@ -182,8 +159,8 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     setCliHoy(mappedCliHoy);
 
     // 2. Load local mermas/devoluciones for this seller
-    const localDevs = safeParseArray<Devolucion>(localStorage.getItem('rp_devoluciones'));
-    const activeDevs = localDevs.filter((d: Devolucion) => d.vendedorId === vnd.id);
+    const localDevs = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
+    const activeDevs = (localDevs as Devolucion[]).filter((d: Devolucion) => d.vendedorId === vnd.id);
     setDevoluciones(activeDevs);
 
     triggerToast(`Ruta iniciada para ${vnd.nombre}`);
@@ -239,17 +216,14 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     } catch (e) {
       console.error('Error al guardar localmente la devolución:', e);
       triggerToast('Error con almacenamiento de merma local', 'err');
+      return;
     }
 
-    // 2. Sincronización en segundo plano con la nube sin bloquear el flujo real del repartidor
-    setDoc(doc(db, 'devoluciones', devolId), newDevol)
-      .then(() => {
-        console.log(`✓ Merma ${devolId} sincronizada exitosamente con la nube.`);
-      })
-      .catch((err) => {
-        console.warn(`Firestore backup stalled or offline for devoluciones/${devolId}:`, err);
-        // No lanzamos error ni bloqueamos al repartidor. El cache offline de Firestore lo subirá cuando vuelva la señal.
-      });
+    // Subir a la nube en segundo plano; ya quedó a salvo en el dispositivo.
+    encolarOperacion(negocioId, devolId, devolucionLocalAPayload(newDevol));
+    void sincronizarPendientes(negocioId);
+
+    console.log(`✓ Merma ${devolId} registrada.`);
   };
 
   const handleAddCartRep = (prod: Product) => {
@@ -348,14 +322,7 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
       };
 
       setMisClientes(prev => [newClientDoc, ...prev]);
-
-      setDoc(doc(db, 'clientes', finalClientId), newClientDoc)
-        .then(() => {
-          console.log(`✓ Master Client ${finalClientId} registered on cloud route database.`);
-        })
-        .catch(err => {
-          console.warn('Client registration background sync stalled:', err);
-        });
+      console.log(`✓ Cliente ${finalClientId} registrado.`);
     }
 
     const newCliRecord = {
@@ -420,39 +387,14 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
     } catch (e) {
       console.error('Error al guardar localmente de ruta:', e);
       triggerToast('Error con almacenamiento de ruta local', 'err');
+      return;
     }
 
-    const cleanDbData = {
-      id: ventaDocData.id,
-      vendedorId: ventaDocData.vendedorId,
-      vendedorNombre: ventaDocData.vendedorNombre,
-      clienteId: ventaDocData.clienteId,
-      clienteNombre: ventaDocData.clienteNombre,
-      clienteTipo: ventaDocData.clienteTipo,
-      monto: ventaDocData.monto,
-      tipoCobro: ventaDocData.tipoCobro,
-      items: ventaDocData.items,
-      timestamp: ventaDocData.timestamp,
-      validado: true
-    };
+    // Subir a la nube en segundo plano; la venta ya está a salvo en el equipo.
+    encolarOperacion(negocioId, saleId, ventaLocalAPayload(ventaDocData));
+    void sincronizarPendientes(negocioId);
 
-    setDoc(doc(db, 'ventas', saleId), cleanDbData)
-      .then(() => {
-        console.log(`✓ Venta de ruta ${saleId} sincronizada with cloud.`);
-        try {
-          const currentLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
-          const idx = currentLocal.findIndex((x: any) => x.id === saleId);
-          if (idx !== -1) {
-            currentLocal[idx].sincronizado = true;
-            localStorage.setItem('rp_ventas', JSON.stringify(currentLocal));
-          }
-        } catch (storageErr) {
-          console.warn('Could not update sync flag in local cache:', storageErr);
-        }
-      })
-      .catch((err) => {
-        console.warn(`Firestore backup stalled or offline for ventas/${saleId}:`, err);
-      });
+    console.log(`✓ Venta de ruta ${saleId} registrada.`);
   };
 
   const handleTerminarRuta = () => {

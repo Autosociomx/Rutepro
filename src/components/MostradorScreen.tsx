@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from '../types';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { validateSale } from '../utils/syncEngine';
+import { useBusiness } from '../context/BusinessContext';
+import { encolarOperacion, sincronizarPendientes, ventaLocalAPayload } from '../services/cloudSync';
 
 const API_KEY =
   process.env.GOOGLE_MAPS_PLATFORM_KEY ||
@@ -19,6 +19,7 @@ interface MostradorScreenProps {
 }
 
 export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
+  const { negocioId } = useBusiness();
   const [searchQuery, setSearchQuery] = useState('');
   const [cartMos, setCartMos] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
   const [paymentType, setPaymentType] = useState<'efectivo' | 'tarjeta'>('efectivo');
@@ -68,21 +69,39 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
     }
     setShowGeoModal(true);
     setGeoStatus('requesting');
-    
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setGeoLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          setGeoStatus('valid');
-        },
-        (err) => {
-          console.error(err);
-          setGeoStatus('error');
-        }
-      );
-    } else {
+
+    if (!navigator.geolocation) {
       setGeoStatus('error');
+      return;
     }
+
+    // A counter can't be left spinning on "Adquiriendo señal GPS…": if the
+    // customer is waiting and the browser never answers (permission prompt
+    // ignored, no fix indoors), fall through to the offline path so the cashier
+    // can still charge. The geolocation timeout alone is not enough — a prompt
+    // the user never dismisses fires neither callback.
+    let settled = false;
+    const settle = (status: 'valid' | 'error') => {
+      if (settled) return;
+      settled = true;
+      setGeoStatus(status);
+    };
+
+    const fallback = window.setTimeout(() => settle('error'), 8000);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        window.clearTimeout(fallback);
+        setGeoLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        settle('valid');
+      },
+      (err) => {
+        window.clearTimeout(fallback);
+        console.warn('[Mostrador] No se pudo obtener la ubicación:', err.message);
+        settle('error');
+      },
+      { timeout: 7000, maximumAge: 60000, enableHighAccuracy: false }
+    );
   };
 
   const executeCobro = async () => {
@@ -137,41 +156,15 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
     } catch (err: any) {
       console.error(err);
       triggerToast('Error con almacenamiento de venta local', 'err');
+      return;
     }
 
-    // 2. Sincronización en segundo plano con la nube sin retrasar la transacción real en mostrador
-    const cleanDbData = {
-      id: saleDocData.id,
-      vendedorId: saleDocData.vendedorId,
-      vendedorNombre: saleDocData.vendedorNombre,
-      clienteId: saleDocData.clienteId,
-      clienteNombre: saleDocData.clienteNombre,
-      monto: saleDocData.monto,
-      tipoCobro: saleDocData.tipoCobro,
-      items: saleDocData.items,
-      timestamp: saleDocData.timestamp,
-      validado: true
-    };
+    // 2. Encolar hacia la nube. La venta ya está a salvo en el dispositivo, así
+    // que un fallo de red aquí solo retrasa la subida: nunca pierde el cobro.
+    encolarOperacion(negocioId, saleId, ventaLocalAPayload(saleDocData));
+    void sincronizarPendientes(negocioId);
 
-    setDoc(doc(db, 'ventas', saleId), cleanDbData)
-      .then(() => {
-        console.log(`✓ Venta de mostrador ${saleId} sincronizada con la nube.`);
-        // Mark as synchronized in local storage
-        try {
-          const currentLocal = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
-          const idx = currentLocal.findIndex((x: any) => x.id === saleId);
-          if (idx !== -1) {
-            currentLocal[idx].sincronizado = true;
-            localStorage.setItem('rp_ventas', JSON.stringify(currentLocal));
-          }
-        } catch (storageErr) {
-          console.warn('Could not update sync flag in local cache:', storageErr);
-        }
-      })
-      .catch((err) => {
-        console.warn(`Firestore backup stalled or offline for ventas/${saleId}:`, err);
-        // El cache offline robusto de Firestore sincronizará cuando consiga internet.
-      });
+    console.log(`✓ Venta de mostrador ${saleId} registrada.`);
   };
 
   const handleImpTicket = () => {

@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, setDoc, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
-import { db } from '../firebase';
 import { Product, Seller, Venta, VentaItem, AppConfig, Devolucion, MysteryAudit, Abono, Client } from '../types';
+import { useBusiness } from '../context/BusinessContext';
+import {
+  encolarAbono,
+  estadoCola,
+  iniciarAutoSync,
+  sincronizarPendientes,
+} from '../services/cloudSync';
 
 interface AdminScreenProps {
   cfg: AppConfig;
@@ -12,8 +17,12 @@ interface AdminScreenProps {
 }
 
 export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, triggerToast, onGoConfig, onCerrarSesion }) => {
+  const { negocioId } = useBusiness();
   // Navigation & Tabs consolidated under Administrative Settings Gear, while main screen is AI Chat Dashboard!
   const [showConfigMenu, setShowConfigMenu] = useState(false);
+  // Live cloud-sync state: the owner must be able to tell at a glance whether
+  // today's cash is already backed up or still sitting on a phone.
+  const [syncState, setSyncState] = useState<{ pendientes: number; bloqueadas: number }>(() => estadoCola());
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [devoluciones, setDevoluciones] = useState<Devolucion[]>([]);
   const [mysteryAudits, setMysteryAudits] = useState<MysteryAudit[]>([]);
@@ -244,196 +253,35 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     });
   };
 
-  // 1. Subscribe to Sales Collection in real-time
+  // Initial data loading
   useEffect(() => {
-    const q = query(collection(db, 'ventas'), orderBy('timestamp', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const salesFromDb: Venta[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        salesFromDb.push({
-          id: docSnap.id,
-          vendedorId: data.vendedorId || '',
-          vendedorNombre: data.vendedorNombre || '',
-          clienteId: data.clienteId || '',
-          clienteNombre: data.clienteNombre || '',
-          clienteTipo: data.clienteTipo || '',
-          monto: Number(data.monto) || 0,
-          tipoCobro: data.tipoCobro === 'efectivo' ? 'efectivo' : 'crédito',
-          items: (data.items || []).map((it: VentaItem) => ({
-            id: it.id || '',
-            nombre: it.nombre || '',
-            q: Number(it.q) || 0,
-            pr: Number(it.pr) || 0,
-            ic: it.ic || it.icono || '📦'
-          })),
-          timestamp: data.timestamp || Date.now()
-        });
-      });
-
-      // Merge offline cache ventas
+    try {
       const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
-      const mergedSales = [...salesFromDb];
-      localSales.forEach((ls: any) => {
-        if (!mergedSales.some(dbSale => dbSale.id === ls.id)) {
-          mergedSales.push({
-            id: ls.id,
-            vendedorId: ls.vendedorId || '',
-            vendedorNombre: ls.vendedorNombre || '',
-            clienteId: ls.clienteId || '',
-            clienteNombre: ls.clienteNombre || '',
-            clienteTipo: ls.clienteTipo || '',
-            monto: Number(ls.monto) || 0,
-            tipoCobro: ls.tipoCobro === 'efectivo' ? 'efectivo' : 'crédito',
-            items: (ls.items || []).map((it: any) => ({
-              id: it.id || '',
-              nombre: it.nombre || '',
-              q: Number(it.q) || 0,
-              pr: Number(it.pr) || 0,
-              ic: it.ic || it.icono || '📦'
-            })),
-            timestamp: ls.timestamp || ls.ts || Date.now()
-          });
-        }
-      });
-      mergedSales.sort((a, b) => b.timestamp - a.timestamp);
-
-      setVentas(mergedSales);
-      localStorage.setItem('rp_ventas', JSON.stringify(mergedSales));
-    }, (error) => {
-      console.warn('Real-time sales sync offline fallback:', error);
-      const localSales = JSON.parse(localStorage.getItem('rp_ventas') || '[]');
-      setVentas(localSales);
-    });
-
-    return () => unsub();
-  }, []);
-
-  // 2. Subscribe to Mermas (Devoluciones)
-  useEffect(() => {
-    const q = query(collection(db, 'devoluciones'), orderBy('timestamp', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const devolsFromDb: Devolucion[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        devolsFromDb.push({
-          id: docSnap.id,
-          vendedorId: data.vendedorId || '',
-          vendedorNombre: data.vendedorNombre || '',
-          clienteId: data.clienteId || '',
-          clienteNombre: data.clienteNombre || '',
-          productoId: data.productoId || '',
-          productoNombre: data.productoNombre || '',
-          cantidad: Number(data.cantidad) || 0,
-          timestamp: data.timestamp || Date.now()
-        });
-      });
+      if (Array.isArray(localSales)) setVentas(localSales);
 
       const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
-      const mergedDevols = [...devolsFromDb];
-      localDevols.forEach((ld: any) => {
-        if (!mergedDevols.some(dbDev => dbDev.id === ld.id)) {
-          mergedDevols.push({
-            id: ld.id,
-            vendedorId: ld.vendedorId || '',
-            vendedorNombre: ld.vendedorNombre || '',
-            clienteId: ld.clienteId || '',
-            clienteNombre: ld.clienteNombre || '',
-            productoId: ld.productoId || '',
-            productoNombre: ld.productoNombre || '',
-            cantidad: Number(ld.cantidad) || 0,
-            timestamp: ld.timestamp || Date.now()
-          });
-        }
-      });
-      mergedDevols.sort((a, b) => b.timestamp - a.timestamp);
+      if (Array.isArray(localDevols)) setDevoluciones(localDevols);
 
-      setDevoluciones(mergedDevols);
-      localStorage.setItem('rp_devoluciones', JSON.stringify(mergedDevols));
-    }, (error) => {
-      console.warn('Real-time devoluciones offline:', error);
-      const localDevols = JSON.parse(localStorage.getItem('rp_devoluciones') || '[]');
-      setDevoluciones(localDevols);
-    });
+      const localAudits = JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]');
+      if (Array.isArray(localAudits)) setMysteryAudits(localAudits);
 
-    return () => unsub();
+      const localAbonos = JSON.parse(localStorage.getItem('rp_abonos') || '[]');
+      if (Array.isArray(localAbonos)) setAbonos(localAbonos);
+
+      const localClients = JSON.parse(localStorage.getItem('rp_clientes') || '[]');
+      if (Array.isArray(localClients)) setDbClientes(localClients);
+    } catch (e) {
+      console.warn('Error reading stored state:', e);
+    }
   }, []);
 
-  // 3. Subscribe to Mystery Audits
+  // Keep pushing whatever the route captured offline, and reflect the result.
   useEffect(() => {
-    const q = query(collection(db, 'mystery_audits'), orderBy('timestamp', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const auditsFromDb: MysteryAudit[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        auditsFromDb.push({
-          id: docSnap.id,
-          vendedorId: data.vendedorId || '',
-          vendedorNombre: data.vendedorNombre || '',
-          fecha: data.fecha || '',
-          auditor: data.auditor || '',
-          checks: data.checks || { cobroExacto: true, entregaRecibo: true, presentacionLimpia: true, tratoAmable: true },
-          calificacion: Number(data.calificacion) || 100,
-          notas: data.notas || '',
-          timestamp: data.timestamp || Date.now()
-        });
-      });
-      setMysteryAudits(auditsFromDb);
-      localStorage.setItem('rp_mystery_audits', JSON.stringify(auditsFromDb));
-    }, (error) => {
-      console.warn('Real-time mystery audits offline:', error);
-      const local = JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]');
-      setMysteryAudits(local);
+    const stop = iniciarAutoSync(negocioId, (summary) => {
+      setSyncState({ pendientes: summary.pendientes, bloqueadas: summary.bloqueadas });
     });
-
-    return () => unsub();
-  }, []);
-
-  // 4. Subscribe to Payments (Abonos) Sincronizados
-  useEffect(() => {
-    const q = query(collection(db, 'abonos'), orderBy('timestamp', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const paymentsList: Abono[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        paymentsList.push({
-          id: docSnap.id,
-          clienteNombre: d.clienteNombre || '',
-          monto: Number(d.monto) || 0,
-          fecha: d.fecha || '',
-          timestamp: d.timestamp || Date.now(),
-          recibidoPor: d.recibidoPor || 'Administrador (Cdis)'
-        });
-      });
-      setAbonos(paymentsList);
-      localStorage.setItem('rp_abonos', JSON.stringify(paymentsList));
-    }, (error) => {
-      console.warn('Real-time payments sync fallback:', error);
-      const local = JSON.parse(localStorage.getItem('rp_abonos') || '[]');
-      setAbonos(local);
-    });
-
-    return () => unsub();
-  }, []);
-
-  // 5. Subscribe to Master Clients Collection
-  useEffect(() => {
-    const q = query(collection(db, 'clientes'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const clientsList: Client[] = [];
-      snapshot.forEach((docSnap) => {
-        clientsList.push({ id: docSnap.id, ...docSnap.data() } as Client);
-      });
-      setDbClientes(clientsList);
-      localStorage.setItem('rp_clientes', JSON.stringify(clientsList));
-    }, (error) => {
-      console.warn('Real-time clients sync error:', error);
-      const local = JSON.parse(localStorage.getItem('rp_clientes') || '[]');
-      setDbClientes(local);
-    });
-
-    return () => unsub();
-  }, []);
+    return stop;
+  }, [negocioId]);
 
   // Group and compute client transaction accounts, credit ledger balances and historic purchases
   const getClientesLedger = () => {
@@ -607,11 +455,25 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     recognition.start();
   };
 
-  // Safe reset routine
+  // Safe reset routine.
+  //
+  // This only clears *this device*: the cloud ledger is the accounting record
+  // and stays intact. Anything still queued is pushed first so a reset can
+  // never be the reason a route's cash disappears.
   const handleWipeData = async () => {
     setIsWiping(true);
-    triggerToast('🗑️ Eliminando transacciones de la nube y caches...');
+    triggerToast('🗑️ Subiendo pendientes y limpiando este dispositivo...');
     try {
+      const summary = await sincronizarPendientes(negocioId);
+      if (summary.pendientes > 0 || summary.bloqueadas > 0) {
+        setSyncState({ pendientes: summary.pendientes, bloqueadas: summary.bloqueadas });
+        triggerToast(
+          `Quedan ${summary.pendientes + summary.bloqueadas} operaciones sin subir. Conéctate antes de limpiar.`,
+          'err'
+        );
+        return;
+      }
+
       localStorage.removeItem('rp_ventas');
       localStorage.removeItem('rp_devoluciones');
       localStorage.removeItem('rp_mystery_audits');
@@ -621,33 +483,12 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       setMysteryAudits([]);
       setAbonos([]);
 
-      const vSnap = await getDocs(query(collection(db, 'ventas')));
-      const dSnap = await getDocs(query(collection(db, 'devoluciones')));
-      const mSnap = await getDocs(query(collection(db, 'mystery_audits')));
-      const abSnap = await getDocs(query(collection(db, 'abonos')));
-
-      const batch = writeBatch(db);
-      vSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'ventas', docSnap.id));
-      });
-      dSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'devoluciones', docSnap.id));
-      });
-      mSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'mystery_audits', docSnap.id));
-      });
-      abSnap.forEach((docSnap) => {
-        batch.delete(doc(db, 'abonos', docSnap.id));
-      });
-
-      await batch.commit();
-
-      triggerToast('✓ Balance, cuentas y auditorías restauradas en ceros.', 'ok');
+      triggerToast('✓ Dispositivo limpio. El historial de la nube se conserva.', 'ok');
       setShowWipeConfirm(false);
       setShowConfigMenu(false);
     } catch (e: any) {
       console.error(e);
-      triggerToast('Error al limpiar registros de la nube', 'err');
+      triggerToast('Error al limpiar registros', 'err');
     } finally {
       setIsWiping(false);
     }
@@ -656,8 +497,11 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   // Total System Reset routine (Wipes Config + Data)
   const handleSystemReset = async () => {
     setIsWiping(true);
-    triggerToast('♻️ Reiniciando sistema completo: Borrando catálogo y ventas...');
+    triggerToast('♻️ Reiniciando este dispositivo: catálogo y ventas locales...');
     try {
+      // Push anything captured offline before wiping the device caches.
+      await sincronizarPendientes(negocioId);
+
       // 1. Local caches
       localStorage.removeItem('rp_cfg');
       localStorage.removeItem('rp_ventas');
@@ -665,38 +509,14 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       localStorage.removeItem('rp_mystery_audits');
       localStorage.removeItem('rp_abonos');
       localStorage.removeItem('rp_clientes');
+      localStorage.removeItem('rp_cfg_backup');
+      localStorage.removeItem('rp_ventas_backup');
+      localStorage.removeItem('rp_devoluciones_backup');
 
-      // 2. Firestore Wipe
-      const vSnap = await getDocs(query(collection(db, 'ventas')));
-      const dSnap = await getDocs(query(collection(db, 'devoluciones')));
-      const mSnap = await getDocs(query(collection(db, 'mystery_audits')));
-      const abSnap = await getDocs(query(collection(db, 'abonos')));
-      const cSnap = await getDocs(query(collection(db, 'clientes')));
-
-      const batch = writeBatch(db);
-      vSnap.forEach((ds) => batch.delete(doc(db, 'ventas', ds.id)));
-      dSnap.forEach((ds) => batch.delete(doc(db, 'devoluciones', ds.id)));
-      mSnap.forEach((ds) => batch.delete(doc(db, 'mystery_audits', ds.id)));
-      abSnap.forEach((ds) => batch.delete(doc(db, 'abonos', ds.id)));
-      cSnap.forEach((ds) => batch.delete(doc(db, 'clientes', ds.id)));
-
-      // 3. Reset Config to factory RoutePro
-      const cleanCfg = {
-        nombre: '',
-        letra: 'R',
-        subtitulo: 'Portal de Gestión de Ventas',
-        color_principal: '#C9912A',
-        productos: [],
-        vendedores: [],
-        logo_url: ''
-      };
-      batch.set(doc(db, 'config', 'global'), cleanCfg);
-
-      await batch.commit();
-
-      triggerToast('✓ Sistema restaurado a valores de fábrica.', 'ok');
+      triggerToast('✓ Dispositivo restaurado. Los datos de la nube se conservan.', 'ok');
       setShowConfigMenu(false);
-      onCerrarSesion?.(); // Force state refresh and go to landing
+      await onCerrarSesion?.();
+      window.location.reload();
     } catch (e) {
       console.error(e);
       triggerToast('Error en reset total', 'err');
@@ -721,7 +541,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     }
 
     setIsSubmittingAbono(true);
-    triggerToast('⏳ Sincronizando pago con la nube...');
+    triggerToast('⏳ Registrando pago de abono...');
 
     const abonoId = 'AB_' + Date.now();
     const abonoObj: Abono = {
@@ -734,17 +554,22 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     };
 
     try {
-      await setDoc(doc(db, 'abonos', abonoId), abonoObj);
-      
-      // Update local storage payment lists immediately to avoid stale interface
       const prevAbonos = JSON.parse(localStorage.getItem('rp_abonos') || '[]');
       const updatedAbonos = [abonoObj, ...prevAbonos];
       localStorage.setItem('rp_abonos', JSON.stringify(updatedAbonos));
       setAbonos(updatedAbonos);
 
+      // El abono baja la deuda del cliente en la nube (RPC transaccional con
+      // idempotencia): sin esto el saldo solo existiría en este dispositivo.
+      encolarAbono(negocioId, abonoId, {
+        cliente_nombre: abonoObj.clienteNombre,
+        monto_centavos: cents,
+        recibido_por: abonoObj.recibidoPor || 'Matriz (Caja Central)',
+      });
+      void sincronizarPendientes(negocioId);
+
       triggerToast(`✓ ¡Abono de ${formatPrice(cents)} aplicado de forma exitosa a ${selectedClientLedger.nombre}!`, 'ok');
       
-      // Recast computed ledger selection
       const updatedLedger = getClientesLedger();
       const match = updatedLedger.find(c => c.nombre === selectedClientLedger.nombre);
       if (match) {
@@ -755,7 +580,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       setAbonoMontoPesos('');
     } catch (err) {
       console.error(err);
-      triggerToast('Fallo al cargar abono en Firestore', 'err');
+      triggerToast('Fallo al cargar abono', 'err');
     } finally {
       setIsSubmittingAbono(false);
     }
@@ -774,7 +599,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     }
 
     setIsSubmittingAudit(true);
-    triggerToast('⏳ Sincronizando auditoría misteriosa...');
+    triggerToast('⏳ Registrando auditoría misteriosa...');
 
     let correctChecks = 0;
     if (mCheckCobro) correctChecks++;
@@ -802,11 +627,11 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     };
 
     try {
-      await setDoc(doc(db, 'mystery_audits', auditId), auditObj);
       const prev = JSON.parse(localStorage.getItem('rp_mystery_audits') || '[]');
       localStorage.setItem('rp_mystery_audits', JSON.stringify([auditObj, ...prev]));
+      setMysteryAudits([auditObj, ...prev]);
       
-      triggerToast('✓ Auditoría misteriosa sincronizada en vivo con la comandancia.', 'ok');
+      triggerToast('✓ Auditoría misteriosa registrada con éxito.', 'ok');
       setShowMysteryModal(false);
       
       setMNotas('');
@@ -849,10 +674,39 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
           </div>
           <div className="min-w-0">
             <div className="text-xs font-bold text-white truncate">{cfg.nombre}</div>
-            <div className="text-[9px] text-gray-400 tracking-wider flex items-center gap-1 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Cdis Conectado</span>
-            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!negocioId) return;
+                const summary = await sincronizarPendientes(negocioId);
+                setSyncState({ pendientes: summary.pendientes, bloqueadas: summary.bloqueadas });
+                triggerToast(
+                  summary.pendientes === 0 && summary.bloqueadas === 0
+                    ? '✓ Todo respaldado en la nube'
+                    : `Quedan ${summary.pendientes + summary.bloqueadas} operaciones por subir`,
+                  summary.bloqueadas > 0 ? 'err' : 'ok'
+                );
+              }}
+              className="text-[9px] text-gray-400 tracking-wider flex items-center gap-1 mt-0.5 cursor-pointer hover:text-white transition-colors"
+              title="Toca para sincronizar ahora"
+            >
+              {syncState.bloqueadas > 0 ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                  <span>{syncState.bloqueadas} con error · revisar</span>
+                </>
+              ) : syncState.pendientes > 0 ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span>{syncState.pendientes} por subir</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Respaldado en la nube</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -1888,11 +1742,15 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
               🧹
             </div>
             <div className="space-y-2 text-center">
-              <div className="font-display font-bold text-base text-white">¿Borrar Registros y Reestablecer Balance?</div>
+              <div className="font-display font-bold text-base text-white">¿Limpiar los registros de este dispositivo?</div>
               <p className="text-gray-400 text-xs leading-relaxed text-center">
-                Esta acción es inmediata e irreversible para la base de datos de <strong>{cfg.nombre}</strong>.
+                Deja en ceros el tablero de <strong>{cfg.nombre}</strong> en este equipo: ventas, pagos y mermas
+                guardados aquí. Es inmediato y no se puede deshacer localmente.
                 <br /><br />
-                <span className="text-amber-400 font-medium text-center">Reseteará el saldo a $0.00, limpiando el registro de ventas, pagos y mermas para iniciar una demostración limpia desde cero.</span>
+                <span className="text-amber-400 font-medium text-center">
+                  El historial contable de la nube se conserva. Si quedan cobros sin subir, primero se
+                  sincronizan: nada se pierde.
+                </span>
               </p>
             </div>
             
