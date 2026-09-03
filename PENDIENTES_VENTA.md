@@ -5,29 +5,74 @@ está en el código: son decisiones de negocio o pasos de operación.
 
 ---
 
+## 0. Ya hecho (2 de septiembre de 2026)
+
+### 0.1 Migración ejecutada ✅
+`supabase/routepro_sellable_migration.sql` **ya está aplicada** en el proyecto
+Supabase `Rutepro` (`gizfikiwsjylemdrpvkx`), en 8 migraciones versionadas
+(`routepro_01_…` a `routepro_08_…`).
+
+Verificado después de aplicarla:
+- Las 13 tablas `rp_*` existen, **todas con RLS activo y con políticas**.
+- Los advisors de seguridad no reportan **ningún** error sobre tablas `rp_*`.
+- Ninguna función de RoutePro es ejecutable por el rol `anon`.
+- Las tablas del otro sistema que vive en ese mismo proyecto (`cm_*`, `pulso_*`)
+  quedaron intactas: la migración solo toca objetos `rp_*` y da permisos función
+  por función, nunca `ON ALL`.
+
+> Nota: ese proyecto de Supabase es compartido con tu sistema de comandas.
+> Funciona, pero si RoutePro va a crecer como producto conviene moverlo a un
+> proyecto propio (facturación, respaldos y límites separados).
+
+### 0.2 Bug crítico encontrado y corregido ✅
+Al probar el ciclo de dinero contra la base real apareció un error que **solo se
+ve ejecutando**: `registrar_abono` hacía `SELECT SUM(...) ... FOR UPDATE`, y
+Postgres prohíbe `FOR UPDATE` junto a una función de agregado. Efecto: **todos
+los abonos fallaban, siempre**. Ya está corregido en la base y en el archivo SQL
+(se bloquean las filas primero y se suman después).
+
+### 0.3 Ciclo de dinero probado ✅
+Prueba ejecutada contra la base real (los datos de prueba ya fueron borrados):
+
+| Caso | Resultado |
+|---|---|
+| Alta de negocio con dueño | crea negocio + membresía en una transacción |
+| Venta en efectivo | registrada |
+| Reintento con la misma clave de idempotencia | **no duplica** |
+| Total que no cuadra con los renglones | **rechazado** |
+| Venta a crédito | genera el fiado y sube el saldo del cliente |
+| Abono mayor a la deuda | **rechazado** |
+| Abono parcial de $50 sobre deuda de $114 | saldo queda en $64, fiado "parcial" |
+| Reintento del mismo abono | **no recobra** |
+
+---
+
 ## 1. Obligatorio antes del primer cliente que paga
 
-### 1.1 Ejecutar la migración en Supabase
-`supabase/routepro_sellable_migration.sql` está escrita y es idempotente, pero
-**nadie la ha corrido todavía** contra un proyecto real. Hasta que se ejecute, la
-app funciona solo en modo demo.
+### 1.1 Variables de entorno en producción
+La app necesita estas dos para salir del modo demo (ya probadas en local):
 
-Después de correrla, verificar en el panel de Supabase:
-- Que las 13 tablas `rp_*` existan y tengan **RLS activo**.
-- Que `Database → Advisors` no reporte tablas expuestas sin política.
-- Que las funciones `registrar_operacion`, `registrar_abono`, `abrir_ruta`,
-  `cerrar_ruta` y `crear_negocio_con_dueno` aparezcan con `SECURITY DEFINER`.
+```bash
+VITE_SUPABASE_URL="https://gizfikiwsjylemdrpvkx.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY="<la publishable key del proyecto>"
+```
 
-### 1.2 Probar el ciclo completo con datos reales
-Con la base ya migrada, recorrer una vez:
+La publishable key se copia de Supabase → Settings → API Keys. **Nunca** uses la
+`service_role` en el front. El archivo `.env.local` no se sube al repositorio a
+propósito.
+
+### 1.2 Probar el ciclo desde la aplicación
+El corazón (los RPC) ya está probado contra la base, pero **el recorrido desde la
+interfaz falta hacerlo**: el entorno donde se hizo esta revisión no tiene salida
+de red hacia Supabase desde el navegador, así que el registro y el login por
+pantalla no se pudieron ejercitar. Recórrelo una vez en tu máquina:
 
 1. Registro → alta de negocio → cargar catálogo en Configuración.
 2. Venta en Mostrador → confirmar que aparece en `rp_operaciones`.
-3. Venta a crédito en Ruta → confirmar que crea el `rp_fiado` y sube el saldo del cliente.
+3. Venta a crédito en Ruta → confirmar el fiado y el saldo del cliente.
 4. Abono desde el Panel del Dueño → confirmar que baja el saldo.
-5. Poner el teléfono en modo avión, cobrar 3 ventas, reconectar → confirmar que
-   las 3 suben y **ninguna se duplica**.
-6. Abrir el Dashboard desde otro dispositivo → confirmar que ve las mismas ventas.
+5. Modo avión, cobrar 3 ventas, reconectar → las 3 suben y **ninguna se duplica**.
+6. Abrir el Dashboard en otro dispositivo → ve las mismas ventas.
 
 ### 1.3 Correo transaccional
 El registro usa el correo por defecto de Supabase, que tiene límite bajo y suele
@@ -106,3 +151,4 @@ ya tenía. Se restauraron todos:
 | 3 | Los endpoints de IA (que cuestan dinero) no tenían límite de peticiones ni de tamaño de cuerpo | Corregido y probado |
 | 4 | El mostrador podía quedarse trabado esperando el GPS, sin poder cobrar | Corregido y probado |
 | 5 | Las ventas nunca salían del navegador: no había ninguna escritura a la nube | Corregido |
+| 6 | `registrar_abono` usaba `SUM(...) FOR UPDATE` (ilegal en Postgres): **todo abono fallaba** | Corregido y probado |

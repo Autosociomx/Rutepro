@@ -814,12 +814,17 @@ BEGIN
     RAISE EXCEPTION 'El monto del abono debe ser estrictamente mayor a 0.';
   END IF;
 
-  -- Validar pertenencia del cliente y bloquear con FOR UPDATE
+  -- Validar pertenencia del cliente y bloquear su fila
   IF NOT EXISTS (
-    SELECT 1 FROM public.rp_clientes WHERE id = p_cliente_id AND negocio_id = p_negocio_id FOR UPDATE
+    SELECT 1 FROM public.rp_clientes WHERE id = p_cliente_id AND negocio_id = p_negocio_id
   ) THEN
     RAISE EXCEPTION 'El cliente no pertenece a este negocio.';
   END IF;
+
+  -- Bloqueo explícito: serializa dos cobradores abonando al mismo cliente.
+  PERFORM 1 FROM public.rp_clientes
+  WHERE id = p_cliente_id AND negocio_id = p_negocio_id
+  FOR UPDATE;
 
   -- Validar ruta si fue enviada
   IF p_ruta_id IS NOT NULL THEN
@@ -839,11 +844,17 @@ BEGIN
     RETURN v_existing_abono_id;
   END IF;
 
-  -- Calcular deuda total pendiente ANTES de insertar abono y bloquear fiados FOR UPDATE
-  SELECT COALESCE(SUM(saldo_pendiente_centavos), 0) INTO v_total_deuda
-  FROM public.rp_fiados
+  -- Calcular deuda total pendiente ANTES de insertar el abono.
+  -- En dos pasos a propósito: Postgres prohíbe FOR UPDATE junto a una función
+  -- de agregado ("FOR UPDATE is not allowed with aggregate functions"), así que
+  -- primero se bloquean las filas y después se suman las ya bloqueadas.
+  PERFORM 1 FROM public.rp_fiados
   WHERE negocio_id = p_negocio_id AND cliente_id = p_cliente_id AND estado IN ('pendiente', 'parcial')
   FOR UPDATE;
+
+  SELECT COALESCE(SUM(saldo_pendiente_centavos), 0) INTO v_total_deuda
+  FROM public.rp_fiados
+  WHERE negocio_id = p_negocio_id AND cliente_id = p_cliente_id AND estado IN ('pendiente', 'parcial');
 
   IF p_monto_centavos > v_total_deuda THEN
     RAISE EXCEPTION 'El monto del abono (% centavos) excede el saldo de deuda total del cliente (% centavos).',
