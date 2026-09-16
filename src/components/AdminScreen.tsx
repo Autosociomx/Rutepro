@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, setDoc, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Product, Seller, Venta, VentaItem, AppConfig, Devolucion, MysteryAudit, Abono, Client } from '../types';
+import { RoleScopeNotice } from './RoleScopeNotice';
 
 interface AdminScreenProps {
   cfg: AppConfig;
@@ -879,6 +880,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
           </button>
         </div>
       </div>
+
+      <RoleScopeNotice role="dueno" />
 
       {/* ADMIN CONTROL ACCORDION POPUP PANEL */}
       {showConfigMenu && (

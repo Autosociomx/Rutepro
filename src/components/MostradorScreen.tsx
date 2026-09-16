@@ -4,6 +4,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { Product, Seller, AppConfig } from '../types';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { validateSale } from '../utils/syncEngine';
+import { RoleScopeNotice } from './RoleScopeNotice';
 
 const API_KEY =
   process.env.GOOGLE_MAPS_PLATFORM_KEY ||
@@ -16,9 +17,11 @@ interface MostradorScreenProps {
   cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
+  /** El dueño está probando esta pantalla desde su menú de roles. */
+  ownerPreview?: boolean;
 }
 
-export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
+export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack, triggerToast, ownerPreview = false }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [cartMos, setCartMos] = useState<{ id: string; nombre: string; pr: number; icono: string; q: number }[]>([]); // { id, nombre, pr, icono, q }
   const [paymentType, setPaymentType] = useState<'efectivo' | 'tarjeta'>('efectivo');
@@ -286,8 +289,10 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
         </div>
       </div>
 
+      <RoleScopeNotice role="mostrador" visible={ownerPreview} />
+
       {/* POS Content Body Split layout */}
-      <div className="flex-1 flex overflow-hidden p-3.5 gap-3.5 max-h-[calc(100vh-56px)] select-none">
+      <div className="flex-1 flex overflow-hidden p-3.5 gap-3.5 min-h-0 select-none">
         {/* Left Side: Product catalog with search bar */}
         <div className="flex-1 flex flex-col gap-3 min-w-0 h-full overflow-hidden">
           <div className="relative shrink-0 text-left">

@@ -3,6 +3,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, doc, setDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { Product, Seller, AppConfig, Devolucion, Client } from '../types';
 import { validateSale, safeParseArray } from '../utils/syncEngine';
+import { RoleScopeNotice } from './RoleScopeNotice';
 
 interface ClientSaleRecord {
   id: string;
@@ -19,9 +20,11 @@ interface RepartidorScreenProps {
   cfg: AppConfig;
   onGoBack: () => void;
   triggerToast: (msg: string, type?: 'ok' | 'err') => void;
+  /** El dueño está probando esta pantalla desde su menú de roles. */
+  ownerPreview?: boolean;
 }
 
-export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast }) => {
+export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBack, triggerToast, ownerPreview = false }) => {
   const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
   const [activeTab, setActiveTab] = useState<'ped' | 'cli' | 'cierr' | 'ia'>('ped');
   const [horaIni, setHoraIni] = useState<Date | null>(null);
@@ -603,6 +606,13 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
           <div className="mb-6 text-left">
             <h2 className="font-display text-xl font-extrabold text-white">¿Quién eres?</h2>
             <p className="text-xs text-[#8A93A8] mt-1.5 leading-relaxed">Selecciona tu perfil de repartidor para acceder a tu hoja de pedido, sincronizar cobros y registrar devoluciones territoriales.</p>
+            {ownerPreview && (
+              <p className="text-[10px] text-[#8A93A8]/80 leading-relaxed mt-2.5 border-l-2 border-white/10 pl-2.5">
+                Ves la lista completa porque estás probando como dueño. En la operación real cada
+                repartidor abre la app en su propio teléfono, entra con su perfil y solo ve su ruta
+                y sus cobros: nunca los de sus compañeros ni el balance del negocio.
+              </p>
+            )}
           </div>
           {renderSellerList()}
         </div>
@@ -634,6 +644,8 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
           <span>Sincronizado</span>
         </div>
       </div>
+
+      <RoleScopeNotice role="repartidor" visible={ownerPreview} />
 
       {/* Driver KPIs */}
       <div className="px-4.5 pt-3.5 pb-1 shrink-0 grid grid-cols-3 gap-2">

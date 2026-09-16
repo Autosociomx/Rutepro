@@ -334,6 +334,7 @@ export default function App() {
           cfg={cfg} 
           onGoBack={() => setCurrentScreen('landing')} 
           triggerToast={triggerToast}
+          ownerPreview
         />
       )}
 
@@ -342,6 +343,7 @@ export default function App() {
           cfg={cfg} 
           onGoBack={() => setCurrentScreen('landing')} 
           triggerToast={triggerToast}
+          ownerPreview
         />
       )}
 

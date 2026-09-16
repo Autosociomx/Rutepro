@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Product, Seller, AppConfig } from '../types';
+import { ROLE_VIEWS, ROLE_ORDER, OWNER_PREVIEW_NOTE } from '../roles';
 
 interface LandingScreenProps {
   cfg: {
@@ -29,6 +30,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
   const [fastUrl, setFastUrl] = useState('');
   const [fastLoading, setFastLoading] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  // Panel que explica qué pantalla ve cada rol del negocio
+  const [showRolesInfo, setShowRolesInfo] = useState(false);
 
   const handleExecuteFastConfig = async () => {
     const rawUrl = fastUrl.trim();
@@ -392,29 +395,119 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
             </>
           ) : (
             <div className="space-y-4 w-full">
-              <div className="text-[10px] font-mono text-[#3E4A60] uppercase tracking-widest font-bold">
-                ¿Qué abres hoy?
+              <div className="space-y-2">
+                <div className="text-[10px] font-mono text-[#3E4A60] uppercase tracking-widest font-bold">
+                  ¿Qué abres hoy?
+                </div>
+                <p className="text-[11px] text-[#8A93A8] leading-relaxed px-1">
+                  {OWNER_PREVIEW_NOTE}
+                </p>
               </div>
-              
+
+              {/* PANEL DEL DUEÑO: la única vista completa, protegida con PIN */}
+              <button
+                onClick={openAdminLock}
+                className="w-full flex items-center gap-3.5 p-4 rounded-2xl cursor-pointer transition-all active:scale-97 border text-left backdrop-blur-sm"
+                style={{ borderColor: `${cfg.color_principal || '#C9912A'}35`, backgroundColor: `${cfg.color_principal || '#C9912A'}0D` }}
+              >
+                <span className="text-2xl shrink-0">{ROLE_VIEWS.dueno.icono}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-[#EEF1F8]">Dashboard</span>
+                    <span className="text-[9px] font-bold text-[#3E4A60] uppercase tracking-wider">· Tu vista de dueño</span>
+                  </span>
+                  <span className="block text-[10px] text-[#8A93A8] mt-0.5 leading-relaxed">
+                    Ve todo el negocio: balance, cobranza, rutas y equipo.
+                  </span>
+                </span>
+                <span className="text-[10px] shrink-0 text-[#3E4A60]">🔒 PIN</span>
+              </button>
+
               <div className="grid grid-cols-2 gap-3.5">
                 <button 
                   onClick={() => onGo('repartidor')}
-                  className="flex flex-col items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer transition-all active:scale-95 border bg-[#C9912A]/10 backdrop-blur-sm"
+                  className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl cursor-pointer transition-all active:scale-95 border bg-[#C9912A]/10 backdrop-blur-sm"
                   style={{ borderColor: `${cfg.color_principal}35`, backgroundColor: `${cfg.color_principal}08` }}
                 >
-                  <span className="text-3xl text-[#EEF1F8]">🛣</span>
+                  <span className="text-3xl text-[#EEF1F8]">{ROLE_VIEWS.repartidor.icono}</span>
                   <span className="text-xs font-bold text-[#EEF1F8] block">Repartidor</span>
-                  <span className="text-[9px] text-[#8A93A8]">App de ruta</span>
+                  <span className="text-[9px] text-[#8A93A8] leading-snug">{ROLE_VIEWS.repartidor.resumen}</span>
                 </button>
 
                 <button 
                   onClick={() => onGo('mostrador')}
-                  className="flex flex-col items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer transition-all active:scale-95 border border-[#00C896]/20 bg-[#00C896]/5 backdrop-blur-sm"
+                  className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl cursor-pointer transition-all active:scale-95 border border-[#00C896]/20 bg-[#00C896]/5 backdrop-blur-sm"
                 >
-                  <span className="text-3xl text-[#EEF1F8]">🛒</span>
+                  <span className="text-3xl text-[#EEF1F8]">{ROLE_VIEWS.mostrador.icono}</span>
                   <span className="text-xs font-bold text-[#EEF1F8] block">Mostrador</span>
-                  <span className="text-[9px] text-[#8A93A8]">Punto de venta</span>
+                  <span className="text-[9px] text-[#8A93A8] leading-snug">{ROLE_VIEWS.mostrador.resumen}</span>
                 </button>
+              </div>
+
+              {/* EXPLICACIÓN DE ROLES: qué ve y qué no ve cada quien */}
+              <div className="w-full rounded-2xl border border-white/5 bg-[#111520]/60 backdrop-blur-sm overflow-hidden text-left">
+                <button
+                  type="button"
+                  onClick={() => setShowRolesInfo(!showRolesInfo)}
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-all"
+                >
+                  <span className="text-[11px] font-bold text-[#EEF1F8]">🧭 ¿Qué ve cada rol?</span>
+                  <span className="text-[10px] text-[#3E4A60]">{showRolesInfo ? '▲' : '▼'}</span>
+                </button>
+
+                {showRolesInfo && (
+                  <div className="px-4 pb-4 space-y-3.5 animate-fade-in">
+                    <p className="text-[10px] text-[#8A93A8] leading-relaxed border-t border-white/5 pt-3">
+                      RoutePro tiene tres pantallas y cada persona entra únicamente a la suya.
+                      Nadie puede brincarse a la pantalla de otro.
+                    </p>
+
+                    {ROLE_ORDER.map((roleId) => {
+                      const rol = ROLE_VIEWS[roleId];
+                      return (
+                        <div key={rol.id} className="rounded-xl border border-white/5 bg-[#06080C]/60 p-3 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{rol.icono}</span>
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-bold text-[#EEF1F8] leading-tight">
+                                {rol.nombre} <span className="text-[#3E4A60] font-semibold">· {rol.pantalla}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div>
+                              <div className="text-[9px] font-mono uppercase tracking-widest font-bold text-emerald-400/80 mb-1">Sí ve</div>
+                              <ul className="space-y-0.5">
+                                {rol.ve.map((item) => (
+                                  <li key={item} className="text-[10px] text-[#8A93A8] leading-relaxed flex gap-1.5">
+                                    <span className="text-emerald-400/70 shrink-0">✓</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-mono uppercase tracking-widest font-bold text-red-400/70 mb-1">No ve</div>
+                              <ul className="space-y-0.5">
+                                {rol.noVe.map((item) => (
+                                  <li key={item} className="text-[10px] text-[#8A93A8] leading-relaxed flex gap-1.5">
+                                    <span className="text-red-400/60 shrink-0">✕</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-[#8A93A8]/80 leading-relaxed italic border-t border-white/5 pt-2">
+                            {rol.comoEntra}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Reset/Edit manual buttons for complete user control */}
