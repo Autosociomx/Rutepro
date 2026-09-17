@@ -1,3 +1,4 @@
+import { LOGO_NEGOCIO } from '../data';
 import React, { useState, useEffect, useRef } from 'react';
 import { Product, Seller, AppConfig } from '../types';
 
@@ -319,11 +320,21 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
           type="button"
           onClick={openAdminLock}
           title="Acceso de Administración"
-          className="w-20 h-20 rounded-2xl bg-[#111520] border flex items-center justify-center font-display font-extrabold text-3xl mb-8 shadow-xl overflow-hidden p-1.5 transition-all duration-500 hover:scale-105 cursor-pointer hover:brightness-110 active:scale-95 group focus:outline-none"
-          style={{ borderColor: `${cfg.color_principal || '#C9912A'}45`, boxShadow: `0 10px 30px -10px ${cfg.color_principal || '#C9912A'}40` }}
+          // Con logotipo se respeta su forma (el de la panadería es redondo);
+          // sin logotipo, la caja con la inicial de siempre.
+          className={`mb-8 flex items-center justify-center font-display font-extrabold text-3xl shadow-xl overflow-hidden transition-all duration-500 hover:scale-105 cursor-pointer hover:brightness-110 active:scale-95 group focus:outline-none ${
+            (cfg.logo_url || LOGO_NEGOCIO)
+              ? 'w-28 h-28 rounded-full bg-transparent border-0 p-0'
+              : 'w-20 h-20 rounded-2xl bg-[#111520] border p-1.5'
+          }`}
+          style={
+            (cfg.logo_url || LOGO_NEGOCIO)
+              ? { filter: `drop-shadow(0 12px 28px ${cfg.color_principal || '#C9912A'}55)` }
+              : { borderColor: `${cfg.color_principal || '#C9912A'}45`, boxShadow: `0 10px 30px -10px ${cfg.color_principal || '#C9912A'}40` }
+          }
         >
-          {cfg.logo_url ? (
-            <img src={cfg.logo_url} className="w-full h-full object-contain rounded-xl group-hover:scale-102 transition-transform" alt="Logotipo" referrerPolicy="no-referrer" />
+          {(cfg.logo_url || LOGO_NEGOCIO) ? (
+            <img src={cfg.logo_url || LOGO_NEGOCIO} className="w-full h-full object-contain group-hover:scale-102 transition-transform" alt="Logotipo" referrerPolicy="no-referrer" />
           ) : (
             <span style={{ color: cfg.color_principal || '#C9912A' }} className="group-hover:scale-110 transition-transform">{cfg.letra || 'R'}</span>
           )}

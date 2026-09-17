@@ -5,12 +5,13 @@ import { AppConfig } from './types';
 import { syncLocalTransactions } from './utils/syncEngine';
 
 // Configuración del negocio (catálogo, rutas, marca) — ver src/data.ts
-import { NEGOCIO } from './data';
+import { NEGOCIO, MODO_RUTA_SIMPLE } from './data';
 
 // Modular Workspace Screens
 import { LandingScreen } from './components/LandingScreen';
 import { ConfigScreen } from './components/ConfigScreen';
 import { RepartidorScreen } from './components/RepartidorScreen';
+import { RutaScreen } from './components/RutaScreen';
 import { MostradorScreen } from './components/MostradorScreen';
 import { AdminScreen } from './components/AdminScreen';
 
@@ -229,11 +230,19 @@ export default function App() {
       )}
 
       {currentScreen === 'repartidor' && (
-        <RepartidorScreen 
-          cfg={cfg} 
-          onGoBack={() => setCurrentScreen('landing')} 
-          triggerToast={triggerToast}
-        />
+        MODO_RUTA_SIMPLE ? (
+          <RutaScreen
+            cfg={cfg}
+            onGoBack={() => setCurrentScreen('landing')}
+            triggerToast={triggerToast}
+          />
+        ) : (
+          <RepartidorScreen 
+            cfg={cfg} 
+            onGoBack={() => setCurrentScreen('landing')} 
+            triggerToast={triggerToast}
+          />
+        )
       )}
 
       {currentScreen === 'mostrador' && (

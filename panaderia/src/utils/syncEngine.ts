@@ -1,9 +1,11 @@
 import { db } from '../supabase';
-import { doc, setDoc } from '../lib/db';
+import { doc, setDoc, writeBatch } from '../lib/db';
 
 export interface SyncResult {
   ventasSincronizadas: number;
   devolucionesSincronizadas: number;
+  migajasSincronizadas: number;
+  jornadasSincronizadas: number;
 }
 
 // Maximum sale amount accepted, in cents ($1,000,000.00 MXN). Mirrors the
@@ -119,7 +121,12 @@ export async function syncLocalTransactions(): Promise<SyncResult> {
                   ic: it.ic || it.icono || '📦'
                 })),
                 timestamp: s.timestamp || s.ts || Date.now(),
-                validado: true // validated status
+                validado: true, // validated status
+                // Dónde se hizo la venta, cuando el teléfono lo pudo tomar.
+                // Es lo que permite responder "¿dónde fue su última venta?".
+                ...(Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lng))
+                  ? { lat: Number(s.lat), lng: Number(s.lng) }
+                  : {})
               };
 
               await setDoc(doc(db, 'ventas', s.id), dbDoc);
@@ -189,5 +196,83 @@ export async function syncLocalTransactions(): Promise<SyncResult> {
     console.error('Error scanning rp_devoluciones during synchronization:', e);
   }
 
-  return { ventasSincronizadas, devolucionesSincronizadas };
+  // 3. Subir las migajas de ruta (rp_migajas), por lotes para no hacer
+  //    cientos de peticiones desde un teléfono con mala señal.
+  let migajasSincronizadas = 0;
+  try {
+    const migajas = safeParseArray<any>(localStorage.getItem('rp_migajas'));
+    const pendientes = migajas.filter((m) => m.sincronizado !== true);
+
+    if (pendientes.length > 0) {
+      const lote = writeBatch(db);
+      const subidas: string[] = [];
+
+      for (const m of pendientes.slice(0, 400)) {
+        if (!m.id || !Number.isFinite(Number(m.lat)) || !Number.isFinite(Number(m.lng))) continue;
+        lote.set(doc(db, 'recorrido', m.id), {
+          id: m.id,
+          vendedorId: m.vendedorId,
+          vendedorNombre: m.vendedorNombre || '',
+          lat: Number(m.lat),
+          lng: Number(m.lng),
+          precision: Number(m.precision) || 0,
+          timestamp: Number(m.timestamp) || Date.now()
+        });
+        subidas.push(m.id);
+      }
+
+      if (subidas.length > 0) {
+        await lote.commit();
+        const marcadas = new Set(subidas);
+        const actualizadas = migajas.map((m) =>
+          marcadas.has(m.id) ? { ...m, sincronizado: true } : m
+        );
+        localStorage.setItem('rp_migajas', JSON.stringify(actualizadas));
+        migajasSincronizadas = subidas.length;
+      }
+    }
+  } catch (e) {
+    console.warn('[Sync] No se pudieron subir las migajas de ruta:', e);
+  }
+
+  // 4. Subir las jornadas (carga de la mañana y cierre del día).
+  let jornadasSincronizadas = 0;
+  try {
+    const jornadas = safeParseArray<any>(localStorage.getItem('rp_jornadas'));
+    let cambio = false;
+
+    for (let i = 0; i < jornadas.length; i++) {
+      const j = jornadas[i];
+      if (j.sincronizado === true || !j.id) continue;
+      try {
+        await setDoc(doc(db, 'jornadas', j.id), {
+          id: j.id,
+          vendedorId: j.vendedorId,
+          vendedorNombre: j.vendedorNombre || '',
+          fecha: j.fecha,
+          piezasCargadas: Number(j.piezasCargadas) || 0,
+          precioUnitario: Number(j.precioUnitario) || 0,
+          estado: j.estado === 'cerrada' ? 'cerrada' : 'activa',
+          inicio: Number(j.inicio) || Date.now(),
+          timestamp: Number(j.inicio) || Date.now(),
+          ...(j.fin ? { fin: Number(j.fin) } : {}),
+          ...(j.piezasVendidas !== undefined ? { piezasVendidas: Number(j.piezasVendidas) } : {}),
+          ...(j.piezasSobrantes !== undefined ? { piezasSobrantes: Number(j.piezasSobrantes) } : {}),
+          ...(j.piezasFaltantes !== undefined ? { piezasFaltantes: Number(j.piezasFaltantes) } : {}),
+          ...(j.efectivoEsperado !== undefined ? { efectivoEsperado: Number(j.efectivoEsperado) } : {})
+        });
+        jornadas[i].sincronizado = true;
+        cambio = true;
+        jornadasSincronizadas++;
+      } catch (err) {
+        console.warn(`[Sync] No se pudo subir la jornada ${j.id}:`, err);
+      }
+    }
+
+    if (cambio) localStorage.setItem('rp_jornadas', JSON.stringify(jornadas));
+  } catch (e) {
+    console.warn('[Sync] No se pudieron subir las jornadas:', e);
+  }
+
+  return { ventasSincronizadas, devolucionesSincronizadas, migajasSincronizadas, jornadasSincronizadas };
 }

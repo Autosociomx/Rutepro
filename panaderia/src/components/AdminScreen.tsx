@@ -1,3 +1,4 @@
+import { LOGO_NEGOCIO } from '../data';
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, setDoc, getDocs, deleteDoc, writeBatch } from '../lib/db';
 import { db } from '../supabase';
@@ -850,8 +851,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
             className="w-9 h-9 rounded-lg bg-[#111520] border flex items-center justify-center font-display font-bold shrink-0 overflow-hidden"
             style={{ borderColor: `${cfg.color_principal}35` }}
           >
-            {cfg.logo_url ? (
-              <img src={cfg.logo_url} className="w-full h-full object-contain p-0.5" alt="Logo" referrerPolicy="no-referrer" />
+            {(cfg.logo_url || LOGO_NEGOCIO) ? (
+              <img src={cfg.logo_url || LOGO_NEGOCIO} className="w-full h-full object-contain p-0.5" alt="Logo" referrerPolicy="no-referrer" />
             ) : (
               <span className="text-sm" style={{ color: cfg.color_principal }}>{cfg.letra || 'TN'}</span>
             )}

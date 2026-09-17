@@ -59,6 +59,62 @@ La primera vez que abre, el programa publica en la base la configuración de
 
 ---
 
+## Cómo trabaja la ruta
+
+El negocio vende bolillo en ruta, así que la app del repartidor se reduce a
+tres momentos (`src/components/RutaScreen.tsx`):
+
+1. **Carga de la mañana** — cuántas piezas se lleva. Queda registrada con hora
+   y nombre; es el dato que pidió el dueño como prioridad.
+2. **Venta en la calle** — botones rápidos (+1 a +50) y teclado para la
+   cantidad exacta (7, 8, 15…). Dos toques: cantidad y cobrar. El cliente es
+   opcional: por omisión es venta de calle, y se puede asignar a una tiendita
+   cuando haga falta llevarle cuenta o venderle a crédito.
+3. **Cierre** — cargó X, vendió Y, debería traer Z y $N en efectivo. El
+   repartidor captura los sobrantes y ahí queda la merma del día.
+
+Mientras la jornada está abierta se va grabando el recorrido
+(`src/utils/gps.ts`). Está hecho para durar la jornada: pide la posición por
+red en vez de GPS fino, acepta lecturas de hasta 30 segundos y sólo guarda una
+migaja cuando el repartidor se movió 40 metros o pasó un minuto, con un latido
+cada 5 minutos si está parado. Cada venta deja además su propia migaja.
+
+**Todo funciona sin señal.** Ventas, jornadas y migajas se guardan en el
+teléfono y suben solas cuando vuelve el internet (`src/utils/syncEngine.ts`).
+
+Para volver a la pantalla completa de la plantilla (varios productos, carrito,
+devoluciones, asistente), pon `MODO_RUTA_SIMPLE = false` en `src/data.ts`.
+
+---
+
+## Para el bot de Telegram
+
+La base ya trae la consulta armada: **`v_ruta_hoy`** devuelve un renglón por
+repartidor con todo lo que el dueño suele preguntar, sin que el bot tenga que
+calcular nada.
+
+```sql
+select * from v_ruta_hoy where vendedor ilike '%ana%';
+```
+
+| Pregunta del dueño | Columna |
+|---|---|
+| ¿Cuánto lleva vendido? | `vendido_pesos`, `piezas_vendidas`, `ventas` |
+| ¿Cuánto pan le queda? | `piezas_cargadas`, `piezas_restantes` |
+| ¿Dónde fue su última venta? | `ultima_venta_hora`, `ultima_venta_cliente`, `ultima_venta_mapa` |
+| ¿Por dónde anda? | `ultima_posicion_mapa`, `minutos_sin_reportar` |
+
+`ultima_venta_mapa` y `ultima_posicion_mapa` ya vienen como enlace de Google
+Maps, listo para mandarse en el mensaje. Para dibujar el recorrido completo de
+un día está `v_recorrido`.
+
+Un aviso para cuando se conecte el bot: responde con lo último que el teléfono
+alcanzó a subir. Si el repartidor anda sin señal, `minutos_sin_reportar` dice
+hace cuánto se supo de él — conviene que el bot lo mencione en vez de dar por
+hecho que está ahí.
+
+---
+
 ## Demostración para el cliente
 
 `demo/RutePro-Demo-Panaderia.html` es **un solo archivo**: se manda por

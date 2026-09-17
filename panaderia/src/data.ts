@@ -15,6 +15,12 @@
  */
 
 import { AppConfig } from './types';
+// El logotipo viaja dentro del programa: en la compilación normal queda como
+// archivo y en la demostración de un solo archivo se incrusta solo.
+import logoSuperpan from './assets/logo-superpan.png';
+
+/** Logotipo de la panadería, usado cuando no se haya subido otro. */
+export const LOGO_NEGOCIO = logoSuperpan;
 
 /** Paleta sugerida para el selector de color de marca. */
 export const COLS = [
@@ -22,20 +28,25 @@ export const COLS = [
   '#27AE60', '#E67E22', '#2C3E50', '#5D6D7E', '#1A1A2E'
 ];
 
+/**
+ * Modo ruta simple: la pantalla del repartidor se reduce a lo esencial —
+ * carga de la mañana, venta de dos toques y cierre con cuadre — y va dejando
+ * el rastro de la ruta. Ponlo en `false` para volver a la pantalla completa
+ * de la plantilla (varios productos, carrito, devoluciones, asistente).
+ */
+export const MODO_RUTA_SIMPLE = true;
+
 export const NEGOCIO: AppConfig = {
-  nombre: 'Panadería Super Pan La Cantera',
+  nombre: 'Superpan La Cantera',
   letra: 'S',
-  subtitulo: 'Mostrador y rutas de reparto',
-  color_principal: '#C9822A',
+  subtitulo: 'Pan dulce y bolillo · rutas de reparto',
+  color_principal: '#D4AD6A', // dorado tomado del logotipo
   logo_url: '',
 
+  // Un solo producto: es lo que venden en ruta. Si algún día agregan otro,
+  // basta con añadirlo aquí o desde la pantalla de Configuración.
   productos: [
-    { id: 'P1', icono: '🍞', nombre: 'Bolillo',        precio: 150,   unidad: 'pza' },
-    { id: 'P2', icono: '🥖', nombre: 'Telera',         precio: 200,   unidad: 'pza' },
-    { id: 'P3', icono: '🧁', nombre: 'Pan dulce',      precio: 400,   unidad: 'pza' },
-    { id: 'P4', icono: '🥐', nombre: 'Cuernito',       precio: 300,   unidad: 'pza' },
-    { id: 'P5', icono: '🎂', nombre: 'Pastel chico',   precio: 15000, unidad: 'pza' },
-    { id: 'P6', icono: '📦', nombre: 'Caja surtida',   precio: 8500,  unidad: 'caja', piezasPorCaja: 30 }
+    { id: 'BOLILLO', icono: '🥖', nombre: 'Bolillo', precio: 200, unidad: 'pza' }
   ],
 
   vendedores: [
