@@ -23,8 +23,8 @@ export const COLS = [
 ];
 
 export const NEGOCIO: AppConfig = {
-  nombre: 'Panadería El Trigo Dorado',
-  letra: 'P',
+  nombre: 'Panadería Super Pan La Cantera',
+  letra: 'S',
   subtitulo: 'Mostrador y rutas de reparto',
   color_principal: '#C9822A',
   logo_url: '',

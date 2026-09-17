@@ -9,15 +9,15 @@ import { createRoot } from 'react-dom/client';
 import App from '../src/App';
 import '../src/index.css';
 import { sembrarDemo } from './seed';
-import { demoClearAll } from './db.demo';
-
-const MARCA_SEMBRADO = 'rp_demo_sembrado_v1';
+import { demoClearAll, demoHayDatos } from './db.demo';
 
 function sembrarSiHaceFalta() {
   try {
-    if (!localStorage.getItem(MARCA_SEMBRADO)) {
+    // Se decide por los datos mismos, no por una marca guardada: así también
+    // siembra cuando el navegador bloquea el almacenamiento y todo vive en
+    // memoria.
+    if (!demoHayDatos()) {
       const res = sembrarDemo();
-      localStorage.setItem(MARCA_SEMBRADO, String(Date.now()));
       console.log(`[Demo] Datos de muestra listos: ${res.ventas} ventas, ${res.clientes} clientes.`);
     }
   } catch (e) {

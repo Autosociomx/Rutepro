@@ -39,19 +39,37 @@ type Constraint =
 
 const listeners: Record<string, Set<() => void>> = {};
 
+// Respaldo en memoria: hay navegadores y visores de archivos que bloquean el
+// almacenamiento local al abrir un documento desde el disco. En ese caso la
+// demostración funciona igual, sólo que no recuerda nada al recargar.
+const memoria: Record<string, Store> = {};
+let usarMemoria = false;
+
+try {
+  const sonda = '__rp_prueba__';
+  localStorage.setItem(sonda, '1');
+  localStorage.removeItem(sonda);
+} catch {
+  usarMemoria = true;
+  console.warn('[Demo] El navegador bloquea el almacenamiento local; se usa memoria temporal.');
+}
+
 function readStore(table: string): Store {
+  if (usarMemoria) return memoria[table] || {};
   try {
     return JSON.parse(localStorage.getItem(PREFIX + table) || '{}');
   } catch {
-    return {};
+    return memoria[table] || {};
   }
 }
 
 function writeStore(table: string, store: Store) {
+  memoria[table] = store;
   try {
-    localStorage.setItem(PREFIX + table, JSON.stringify(store));
+    if (!usarMemoria) localStorage.setItem(PREFIX + table, JSON.stringify(store));
   } catch (e) {
-    console.warn('[Demo] Sin espacio en el navegador:', e);
+    usarMemoria = true;
+    console.warn('[Demo] Sin espacio o sin permiso de almacenamiento; se continúa en memoria:', e);
   }
   (listeners[table] ||= new Set()).forEach((fn) => {
     try { fn(); } catch (e) { console.warn('[Demo] Error al avisar cambio:', e); }
@@ -61,6 +79,11 @@ function writeStore(table: string, store: Store) {
 /** Carga directa usada por el sembrado de datos de muestra. */
 export function demoSeedTable(table: string, rows: Record<string, any>) {
   writeStore(table, rows);
+}
+
+/** ¿La demostración ya tiene datos cargados? */
+export function demoHayDatos(): boolean {
+  return Object.keys(readStore('ventas')).length > 0;
 }
 
 export function demoClearAll() {
