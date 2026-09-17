@@ -1,0 +1,16 @@
+{
+  "name": "Panadería El Trigo Dorado",
+  "short_name": "Panadería",
+  "description": "Mostrador, rutas de reparto y panel del dueño.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06080C",
+  "theme_color": "#C9822A",
+  "lang": "es-MX",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
