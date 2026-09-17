@@ -117,7 +117,7 @@ hecho que está ahí.
 
 ## Demostración para el cliente
 
-`demo/RutePro-Demo-Panaderia.html` es **un solo archivo**: se manda por
+`demo/Superpan-Demo-v4.html` es **un solo archivo**: se manda por
 WhatsApp o correo, se copia a una memoria y se abre con doble clic. No
 necesita internet, ni servidor, ni base de datos — todo vive en el navegador
 de esa computadora y nada sale de ahí.
@@ -125,6 +125,11 @@ de esa computadora y nada sale de ahí.
 Trae dos semanas de operación simulada (≈260 ventas de mostrador y de dos
 rutas, clientes con crédito, abonos, mermas y auditorías), así que el panel
 del dueño se ve con movimiento desde el primer momento.
+
+El archivo lleva la versión en el nombre y en la insignia de abajo a la
+derecha (**DEMO v4**): así se distingue de descargas anteriores, que el
+navegador guarda como copias aparte. Al abrir una versión nueva, los datos de
+muestra se renuevan solos.
 
 Frente al cliente:
 

@@ -102,6 +102,10 @@ export const RutaScreen: React.FC<Props> = ({ cfg, onGoBack, triggerToast }) => 
   }, [vendedor?.id, jornada?.id, jornada?.estado]);
 
   const elegirVendedor = (v: Seller) => {
+    if (!producto) {
+      triggerToast('Primero da de alta el producto en Configuración', 'err');
+      return;
+    }
     setVendedor(v);
     const j = jornadaDeHoy(v.id);
     setJornada(j);
@@ -234,6 +238,13 @@ export const RutaScreen: React.FC<Props> = ({ cfg, onGoBack, triggerToast }) => 
             <p className="text-xs text-[#8A93A8] mt-1">Toca tu nombre para abrir tu jornada.</p>
           </div>
 
+          {!producto && (
+            <div className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 leading-relaxed">
+              Todavía no hay producto dado de alta. Entra a <strong>Configuración</strong> y
+              agrega el pan que se vende en ruta con su precio.
+            </div>
+          )}
+
           <div className="space-y-2.5">
             {repartidores.map((v) => {
               const j = jornadaDeHoy(v.id);
@@ -247,7 +258,7 @@ export const RutaScreen: React.FC<Props> = ({ cfg, onGoBack, triggerToast }) => 
                     className="w-12 h-12 rounded-xl flex items-center justify-center font-display font-extrabold text-lg shrink-0"
                     style={{ backgroundColor: `${color}22`, color }}
                   >
-                    {v.nombre.charAt(0)}
+                    {(v.nombre || '?').charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-sm text-white truncate">{v.nombre}</div>

@@ -7,12 +7,29 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '../src/App';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import '../src/index.css';
 import { sembrarDemo } from './seed';
 import { demoClearAll, demoHayDatos } from './db.demo';
 
+// Sube cuando cambian los datos de muestra. Los navegadores comparten el
+// almacenamiento entre archivos abiertos desde el disco, así que sin esto una
+// demostración nueva seguiría mostrando el catálogo y la marca de la anterior.
+const VERSION_DEMO = 'ruta-bolillo-1';
+
 function sembrarSiHaceFalta() {
   try {
+    let version = null;
+    try { version = localStorage.getItem('rp_demo_version'); } catch { version = null; }
+
+    if (version !== VERSION_DEMO) {
+      demoClearAll();
+      const res = sembrarDemo();
+      try { localStorage.setItem('rp_demo_version', VERSION_DEMO); } catch { /* sin almacenamiento */ }
+      console.log(`[Demo] Datos de muestra renovados: ${res.ventas} ventas, ${res.jornadas} jornadas.`);
+      return;
+    }
+
     // Se decide por los datos mismos, no por una marca guardada: así también
     // siembra cuando el navegador bloquea el almacenamiento y todo vive en
     // memoria.
@@ -69,7 +86,7 @@ function montarDistintivo() {
   ].join(';'));
 
   const etiqueta = document.createElement('span');
-  etiqueta.textContent = 'DEMO · PIN 1234';
+  etiqueta.textContent = 'DEMO v4 · PIN 1234';
   etiqueta.setAttribute('style', 'color:#E8B04A;font-weight:800;letter-spacing:.08em');
 
   const boton = (texto: string, titulo: string, accion: () => void) => {
@@ -99,7 +116,9 @@ sembrarSiHaceFalta();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary onReiniciar={demoClearAll}>
+      <App />
+    </ErrorBoundary>
   </StrictMode>
 );
 

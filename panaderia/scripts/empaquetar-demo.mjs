@@ -22,7 +22,7 @@ import { fileURLToPath } from 'url';
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(raiz, 'demo-dist');
 const salidaDir = path.join(raiz, 'demo');
-const salida = path.join(salidaDir, 'RutePro-Demo-Panaderia.html');
+const salida = path.join(salidaDir, 'Superpan-Demo-v4.html');
 
 const candidatos = [path.join(dist, 'index.html'), path.join(dist, 'demo', 'index.html')];
 const rutaHtml = candidatos.find((c) => existsSync(c));

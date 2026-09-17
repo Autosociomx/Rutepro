@@ -124,6 +124,38 @@ export function iniciarRastreo(
   alGuardar?: (m: Migaja) => void
 ): Rastreador {
   let ultimaGuardada: Migaja | null = ultimaMigaja(vendedorId);
+
+  // En la demostración no se le pide la ubicación a nadie: frente a un cliente,
+  // un permiso del navegador sobra y puede salir mal. El recorrido de muestra
+  // ya viene sembrado y cada venta agrega su punto.
+  if (typeof window !== 'undefined' && (window as any).__RP_DEMO === true) {
+    const simular = (): Migaja => {
+      const base = ultimaGuardada || { lat: 21.5041, lng: -104.8942 };
+      const m: Migaja = {
+        id: `TRK_${vendedorId}_${Date.now()}`,
+        vendedorId,
+        vendedorNombre,
+        lat: Number((base.lat + (Math.random() - 0.5) * 0.002).toFixed(6)),
+        lng: Number((base.lng + (Math.random() - 0.5) * 0.002).toFixed(6)),
+        precision: 25,
+        timestamp: Date.now(),
+        sincronizado: true
+      };
+      ultimaGuardada = m;
+      agregarMigaja(m);
+      if (alGuardar) alGuardar(m);
+      return m;
+    };
+
+    // Un punto al abrir, para que el indicador se encienda.
+    simular();
+
+    return {
+      detener: () => {},
+      marcar: () => { simular(); },
+      ultima: () => ultimaGuardada
+    };
+  }
   let idReloj: number | null = null;
 
   const considerar = (pos: GeolocationPosition, forzar = false) => {
