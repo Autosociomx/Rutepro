@@ -66,9 +66,16 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
       triggerToast('Agrega productos al carrito para cobrar', 'err');
       return;
     }
+    // En la versión de demostración no se le pide la ubicación a nadie: se
+    // cobra directo, que es lo que interesa enseñar.
+    if (typeof window !== 'undefined' && (window as any).__RP_DEMO === true) {
+      executeCobro();
+      return;
+    }
+
     setShowGeoModal(true);
     setGeoStatus('requesting');
-    
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -78,7 +85,11 @@ export const MostradorScreen: React.FC<MostradorScreenProps> = ({ cfg, onGoBack,
         (err) => {
           console.error(err);
           setGeoStatus('error');
-        }
+        },
+        // Sin límite de tiempo, si el usuario ignora el aviso del navegador la
+        // pantalla se queda en "Adquiriendo señal GPS" para siempre y la venta
+        // no se puede cobrar. Con tope, cae al modo sin conexión.
+        { timeout: 10000, maximumAge: 60000, enableHighAccuracy: false }
       );
     } else {
       setGeoStatus('error');

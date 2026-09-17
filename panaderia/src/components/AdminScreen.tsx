@@ -494,6 +494,15 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   // Metrics calculations for the 4 key cards
   const totalCobrado = ventas.reduce((sum, v) => sum + (v.monto || 0), 0);
   const totalPedidos = ventas.length;
+
+  // Lo de HOY, que es lo que el dueño mira en la tarjeta principal. Antes esa
+  // tarjeta mostraba el acumulado histórico con la etiqueta "Ventas del Día",
+  // así que el número sólo crecía y nunca correspondía a la jornada.
+  const inicioDelDia = new Date();
+  inicioDelDia.setHours(0, 0, 0, 0);
+  const ventasHoy = ventas.filter((v) => (v.timestamp || 0) >= inicioDelDia.getTime());
+  const totalCobradoHoy = ventasHoy.reduce((sum, v) => sum + (v.monto || 0), 0);
+  const totalPedidosHoy = ventasHoy.length;
   
   // Total unique customers encountered
   const totalUniqueClientsCount = computedLedgerList.length;
@@ -564,7 +573,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       const data = await response.json();
       setChatLogs([...newLogs, { role: 'bot', text: data.text || 'Sin respuesta del asesor.' }]);
     } catch (err) {
-      setChatLogs([...newLogs, { role: 'bot', text: `Asesoría offline: El balance del día registra cobros por ${formatPrice(totalCobrado)} en ${totalPedidos} pedidos. El saldo pendiente de cobros créditarios es de ${formatPrice(totalPendingBalanceCents)} de ${totalClientsWithDebtCount} clientes deudores.` }]);
+      setChatLogs([...newLogs, { role: 'bot', text: `Asesoría offline: El balance de hoy registra cobros por ${formatPrice(totalCobradoHoy)} en ${totalPedidosHoy} pedidos (histórico acumulado: ${formatPrice(totalCobrado)}). El saldo pendiente de cobros créditarios es de ${formatPrice(totalPendingBalanceCents)} de ${totalClientsWithDebtCount} clientes deudores.` }]);
     } finally {
       setChatLoading(false);
     }
@@ -959,10 +968,10 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
           >
             <div className="absolute top-2.5 right-3.5 text-lg opacity-80 group-hover:scale-110 transition-transform">📈</div>
             <div className="text-xs font-mono font-bold text-gray-400 tracking-wide uppercase">Ventas del Día</div>
-            <div className="text-lg font-extrabold text-emerald-400 mt-2 tracking-tight">{formatPrice(totalCobrado)}</div>
+            <div className="text-lg font-extrabold text-emerald-400 mt-2 tracking-tight">{formatPrice(totalCobradoHoy)}</div>
             <div className="text-[9px] text-gray-500 mt-1 flex items-center gap-1 font-medium font-mono">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{totalPedidos} transacciones hoy</span>
+              <span>{totalPedidosHoy} transacciones hoy</span>
             </div>
             <div className="mt-2 text-[8px] text-emerald-300 font-semibold flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <span>Examinar reporte detallado</span>

@@ -59,6 +59,38 @@ La primera vez que abre, el programa publica en la base la configuración de
 
 ---
 
+## Demostración para el cliente
+
+`demo/RutePro-Demo-Panaderia.html` es **un solo archivo**: se manda por
+WhatsApp o correo, se copia a una memoria y se abre con doble clic. No
+necesita internet, ni servidor, ni base de datos — todo vive en el navegador
+de esa computadora y nada sale de ahí.
+
+Trae dos semanas de operación simulada (≈260 ventas de mostrador y de dos
+rutas, clientes con crédito, abonos, mermas y auditorías), así que el panel
+del dueño se ve con movimiento desde el primer momento.
+
+Frente al cliente:
+
+| Para qué | Cómo |
+|---|---|
+| Entrar al Panel del Dueño | Toca el logotipo y usa el PIN **1234** |
+| Ponerle el nombre del negocio del cliente | Botón **✎ Nombre** (abajo a la derecha): se renombra toda la app al instante |
+| Dejarla como estaba | Botón **↻ Reiniciar** |
+
+Diferencias con la instalación real, a propósito: no pide ubicación al
+cobrar, no muestra las herramientas dirigidas al vendedor y el PIN viene
+puesto. Las funciones de IA responden con su modo sin conexión, porque no hay
+servidor detrás.
+
+Para regenerarla (por ejemplo, tras cambiar el catálogo en `src/data.ts`):
+
+```bash
+npm run demo
+```
+
+---
+
 ## Configurar el negocio
 
 Dos caminos, y ambos terminan en la misma tabla `config`:

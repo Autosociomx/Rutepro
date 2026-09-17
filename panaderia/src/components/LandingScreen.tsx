@@ -108,6 +108,11 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
     }
   });
 
+  // En la versión de demostración se ocultan las herramientas dirigidas al
+  // vendedor (como generar el catálogo desde el sitio web de un prospecto),
+  // que no tienen por qué verse cuando se le enseña el sistema al cliente.
+  const esDemo = typeof window !== 'undefined' && (window as any).__RP_DEMO === true;
+
   // Background Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -339,10 +344,13 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
         <p className="text-sm text-[#8A93A8] mb-12 max-w-xs leading-relaxed">
           {!hasSetup 
             ? 'La plataforma integral para empresas de distribución. Controla tus catálogos, vendedores y rutas en tiempo real.'
-            : (cfg.subtitulo || 'Administración de fuerza de ventas y rutas.')}
+            // El subtítulo del negocio ya aparece en el encabezado de arriba;
+            // repetirlo aquí se veía como un error de la aplicación.
+            : 'Control de mostrador, rutas de reparto y cobranza, en tiempo real.'}
         </p>
 
         <div className="w-full space-y-3">
+          {!esDemo && (<>
           {/* CONFIGURACIÓN EXPRESS CON IA - MAGIC BOX */}
           <div className="w-full bg-[#111520]/50 backdrop-blur-xl border border-purple-500/10 rounded-3xl p-6 mb-4 shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -374,6 +382,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
               </button>
             </div>
           </div>
+          </>)}
 
           {!hasSetup ? (
             <>
