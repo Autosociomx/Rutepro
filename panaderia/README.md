@@ -6,17 +6,35 @@ de datos migrada de **Firebase a Supabase (Postgres)**.
 
 ---
 
-## Puesta en marcha (10 minutos)
+## Estado de esta instalación
+
+| | |
+|---|---|
+| Proyecto Supabase | `rutepro-panaderia` (org `contex.os`, región us-east-2) |
+| Referencia | `jqjhtibqcvdexinbuxdb` |
+| Esquema | aplicado y verificado — 0 hallazgos del linter de seguridad |
+| Base | vacía, lista para el primer arranque |
+| Credenciales | en `.env.local` (fuera del repositorio) |
+
+**Falta un paso manual**, que sólo se puede dar desde el panel de Supabase:
+**Authentication → Providers → Anonymous sign-ins: ON**. Sin eso la app no
+lee ni escribe, porque las políticas exigen sesión iniciada.
+
+---
+
+## Puesta en marcha desde cero (otra instalación)
 
 ### 1. Crear el proyecto en Supabase
 [supabase.com](https://supabase.com) → **New project**. Región sugerida para
 México: `us-east-2` (Ohio) o `us-west-1`. Guarda la contraseña de la base.
 
 ### 2. Cargar el esquema
-Supabase → **SQL Editor** → pega el contenido de
-[`supabase/migrations/0001_esquema_inicial.sql`](supabase/migrations/0001_esquema_inicial.sql)
-y ejecútalo. Crea tablas, índices, validaciones de dinero, RLS, tiempo real y
-las vistas de reporte.
+Supabase → **SQL Editor** → ejecuta en orden los archivos de
+[`supabase/migrations/`](supabase/migrations): primero
+`0001_esquema_inicial.sql` (tablas, índices, validaciones de dinero, RLS,
+tiempo real y vistas de reporte) y luego
+`0002_endurecer_vistas_y_funciones.sql` (correcciones del linter de
+seguridad de Supabase).
 
 ### 3. Habilitar la sesión de dispositivo
 Supabase → **Authentication → Providers → Anonymous sign-ins: ON**.
