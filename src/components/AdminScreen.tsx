@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, setDoc, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Product, Seller, Venta, VentaItem, AppConfig, Devolucion, MysteryAudit, Abono, Client } from '../types';
@@ -45,6 +45,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   // Administrative control states
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+  const [wipeConfirmText, setWipeConfirmText] = useState('');
   const [isWiping, setIsWiping] = useState(false);
 
   // Mystery Auditing subscreen states
@@ -101,12 +102,19 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       );
       const isVisited = todaySales.length > 0;
       const totalAmount = todaySales.reduce((acc, v) => acc + v.monto, 0);
-      const firstSale = todaySales[todaySales.length - 1]; // oldest sale of today
+      // Oldest sale of today = the one with the smallest timestamp (first visit).
+      const firstSale = todaySales.reduce<Venta | null>(
+        (oldest, v) => (oldest === null || v.timestamp < oldest.timestamp ? v : oldest),
+        null
+      );
       const horaStr = firstSale 
         ? new Date(firstSale.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
         : 'Por visitar';
 
-      const creditDebt = todaySales.some(v => v.tipoCobro === 'crédito') ? totalAmount : 0;
+      // Outstanding debt = only the credit sales, never the cash ones.
+      const creditDebt = todaySales
+        .filter(v => v.tipoCobro === 'crédito')
+        .reduce((sum, v) => sum + v.monto, 0);
 
       return {
         index: idx + 1,
@@ -436,7 +444,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   }, []);
 
   // Group and compute client transaction accounts, credit ledger balances and historic purchases
-  const getClientesLedger = () => {
+  const getClientesLedger = (ventas: Venta[], abonos: Abono[]) => {
     const ledgerTable: { [key: string]: { nombre: string; total_compras: number; total_abonos: number; saldo_actual: number; visitas_totales: number; compras: Venta[]; abonos_detalles: Abono[] } } = {};
 
     ventas.forEach((v) => {
@@ -489,7 +497,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     return Object.values(ledgerTable).sort((a, b) => b.saldo_actual - a.saldo_actual);
   };
 
-  const computedLedgerList = getClientesLedger();
+  const computedLedgerList = useMemo(() => getClientesLedger(ventas, abonos), [ventas, abonos]);
 
   // Metrics calculations for the 4 key cards
   const totalCobrado = ventas.reduce((sum, v) => sum + (v.monto || 0), 0);
@@ -511,7 +519,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
   const activeRoutesCount = activeSellersInVentas.size || cfg.vendedores?.filter(v => v.rol !== 'cajero').length || 0;
 
   // Top products calculation
-  const getProductPopularity = () => {
+  const getProductPopularity = (ventas: Venta[]) => {
     const table: { [key: string]: { nombre: string; icono: string; totalCents: number; qty: number } } = {};
     
     ventas.forEach((v) => {
@@ -534,7 +542,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
     return Object.values(table).sort((a, b) => b.totalCents - a.totalCents).slice(0, 4);
   };
 
-  const topProducts = getProductPopularity();
+  const topProducts = useMemo(() => getProductPopularity(ventas), [ventas]);
   const maxProductRevenue = topProducts.length > 0 ? topProducts[0].totalCents : 1;
 
   // AI execution routine sending context questions
@@ -642,8 +650,9 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
 
       await batch.commit();
 
-      triggerToast('✓ Balance, cuentas y auditorías restauradas en ceros.', 'ok');
+              triggerToast('✓ Balance, cuentas y auditorías restauradas en ceros.', 'ok');
       setShowWipeConfirm(false);
+      setWipeConfirmText('');
       setShowConfigMenu(false);
     } catch (e: any) {
       console.error(e);
@@ -745,7 +754,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
       triggerToast(`✓ ¡Abono de ${formatPrice(cents)} aplicado de forma exitosa a ${selectedClientLedger.nombre}!`, 'ok');
       
       // Recast computed ledger selection
-      const updatedLedger = getClientesLedger();
+      const updatedLedger = getClientesLedger(ventas, abonos);
       const match = updatedLedger.find(c => c.nombre === selectedClientLedger.nombre);
       if (match) {
         setSelectedClientLedger(match);
@@ -1895,10 +1904,25 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
                 <span className="text-amber-400 font-medium text-center">Reseteará el saldo a $0.00, limpiando el registro de ventas, pagos y mermas para iniciar una demostración limpia desde cero.</span>
               </p>
             </div>
-            
+
+            <div className="space-y-1.5 text-left">
+              <label className="block text-gray-400 font-semibold text-[10px] uppercase tracking-wider">
+                Escribe <span className="text-red-400 font-bold">BORRAR</span> para confirmar
+              </label>
+              <input
+                type="text"
+                value={wipeConfirmText}
+                onChange={(e) => setWipeConfirmText(e.target.value)}
+                disabled={isWiping}
+                placeholder="BORRAR"
+                autoComplete="off"
+                className="w-full bg-[#181D2B] border border-red-500/30 text-white rounded-lg p-2.5 text-xs focus:ring-1 focus:ring-red-500 focus:outline-none tracking-widest uppercase"
+              />
+            </div>
+
             <div className="flex gap-2.5 pt-2">
               <button 
-                onClick={() => setShowWipeConfirm(false)}
+                onClick={() => { setShowWipeConfirm(false); setWipeConfirmText(''); }}
                 disabled={isWiping}
                 className="flex-1 py-3 bg-[#181D2B] hover:bg-[#1F2638] rounded-xl text-xs font-bold text-gray-300 border border-white/5 cursor-pointer disabled:opacity-40"
               >
@@ -1906,7 +1930,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ cfg, onGoBack, trigger
               </button>
               <button 
                 onClick={handleWipeData}
-                disabled={isWiping}
+                disabled={isWiping || wipeConfirmText.trim().toUpperCase() !== 'BORRAR'}
                 className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 rounded-xl text-xs font-bold text-black cursor-pointer disabled:opacity-40 text-center font-bold"
               >
                 {isWiping ? 'Borrando...' : 'Sí, Limpiar Todo'}

@@ -345,7 +345,9 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
     }
 
     const newProd = {
-      id: 'P' + Date.now(),
+      // crypto.randomUUID avoids collisions when products are created on two
+      // devices within the same millisecond (plain Date.now() can collide).
+      id: `P${crypto.randomUUID()}`,
       icono: newProdIcon.trim() || '📦',
       nombre: newProdName.trim(),
       precio: cents,
@@ -375,7 +377,7 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
     const metaCents = !isNaN(typedMeta) && typedMeta >= 0 ? Math.round(typedMeta * 100) : 500000;
 
     const newVnd: Seller = {
-      id: 'V' + Date.now(),
+      id: `V${crypto.randomUUID()}`,
       nombre: newVndName.trim(),
       rol: newVndRole,
       ruta: newVndRuta.trim() || 'Ruta Libre',
@@ -402,6 +404,20 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
       return;
     }
 
+    // Accept only https or inline image data URLs (the /api/generate-logo
+    // fallback returns SVG/PNG data URLs). Blocks javascript: and other
+    // schemes that could turn the <img> tag into an injection vector.
+    const trimmedLogo = logoUrl.trim();
+    const isSafeLogo =
+      trimmedLogo === '' ||
+      /^https:\/\//i.test(trimmedLogo) ||
+      /^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(trimmedLogo);
+    if (!isSafeLogo) {
+      triggerToast('El logo debe ser una URL https o una imagen generada por la app', 'err');
+      setTab('neg');
+      return;
+    }
+
     onSave({
       nombre: nombre.trim(),
       letra: letra.trim() || nombre[0].toUpperCase(),
@@ -409,7 +425,7 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ initialCfg, onSave, 
       color_principal: colorPrincipal,
       productos,
       vendedores,
-      logo_url: logoUrl
+      logo_url: trimmedLogo
     });
   };
 

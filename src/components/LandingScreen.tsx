@@ -249,7 +249,15 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
     onGo('admin');
   };
 
-  const handleValidatePin = () => {
+  // SHA-256 hex of the PIN. The raw PIN never touches storage: anyone opening
+  // DevTools only sees the hash, not the digits.
+  const hashPin = async (pin: string): Promise<string> => {
+    const data = new TextEncoder().encode(`rutepro:${pin}`);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  const handleValidatePin = async () => {
     const pin = adminPin.trim();
 
     // First-time setup on this device: force the owner to create a real PIN
@@ -264,7 +272,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
         return;
       }
       try {
-        localStorage.setItem('rp_admin_pin', pin);
+        localStorage.setItem('rp_admin_pin', await hashPin(pin));
       } catch {
         setPinError('No se pudo guardar el PIN en este dispositivo');
         return;
@@ -275,7 +283,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
       return;
     }
 
-    // Normal access: require an exact match against the stored PIN.
+    // Normal access: compare hashes so the raw PIN is never stored or read back.
     let stored = '';
     try {
       stored = localStorage.getItem('rp_admin_pin') || '';
@@ -286,7 +294,17 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({
       setPinError('Ingresa la clave de administración');
       return;
     }
-    if (pin === stored) {
+    // One-time migration: upgrade a legacy plaintext PIN to its hash.
+    if (stored === pin) {
+      try {
+        localStorage.setItem('rp_admin_pin', await hashPin(pin));
+      } catch {
+        // If we can't persist the hash, still let the owner in this once.
+      }
+      enterAdmin();
+      return;
+    }
+    if ((await hashPin(pin)) === stored) {
       enterAdmin();
     } else {
       setPinError('Clave incorrecta');
