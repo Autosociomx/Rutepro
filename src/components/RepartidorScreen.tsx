@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, doc, setDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, addDoc, query, where, getDocs, limit } from 'firebase/firestore';
 import { Product, Seller, AppConfig, Devolucion, Client } from '../types';
 import { validateSale, safeParseArray } from '../utils/syncEngine';
 
@@ -144,7 +144,9 @@ export const RepartidorScreen: React.FC<RepartidorScreenProps> = ({ cfg, onGoBac
 
     // Fetch clients for this seller
     setLoadingClientes(true);
-    const qClients = query(collection(db, 'clientes'), where('vendedorId', '==', vnd.id));
+    // Cap the pull at 500 clients per seller so a bloated /clientes collection
+    // can't blow up Firestore reads or the device's memory on low-end phones.
+    const qClients = query(collection(db, 'clientes'), where('vendedorId', '==', vnd.id), limit(500));
     getDocs(qClients)
       .then((snap) => {
         const loaded: Client[] = [];

@@ -103,6 +103,24 @@ async function assertPublicHttpUrl(rawUrl: string): Promise<void> {
   }
 }
 
+// Text model used across the AI endpoints. 'gemini-3.5-flash' does not exist
+// and made every endpoint fail; 2.0 Flash is the supported low-latency model.
+const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
+
+// Parses JSON out of a model response, tolerating markdown code fences and
+// leading/trailing prose. Returns null instead of throwing so endpoints can
+// fall back gracefully instead of crashing with a 500.
+function safeParseModelJson(text: string): any | null {
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenced ? fenced[1] : (text.match(/\{[\s\S]*\}/)?.[0] ?? text.trim());
+  try {
+    return JSON.parse(candidate.trim());
+  } catch {
+    return null;
+  }
+}
+
 let aiClient: GoogleGenAI | null = null;
 
 function getGemini(): GoogleGenAI {
@@ -203,7 +221,7 @@ ${recentActivity || "Servicios ordinarios en las últimas jornadas de reparto."}
 Sugerir un inventario ideal de salida para cada producto en el catálogo. Retorna un ajuste inteligente basado en el giro de negocio y el día de la semana.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: GEMINI_TEXT_MODEL,
         contents: promptString,
         config: {
           systemInstruction: 'Eres "RoutePro Elite AI", una inteligencia artificial que ayuda a dueños de negocios móviles de distribución, reparto o venta a optimizar la salida de inventario de sus vehículos. Minimiza pérdidas, calcula mermas y asegura abasto según el día de la semana.',
@@ -232,8 +250,10 @@ Sugerir un inventario ideal de salida para cada producto en el catálogo. Retorn
         }
       });
 
-      const responseText = response.text || '';
-      const result = JSON.parse(responseText.trim());
+      const result = safeParseModelJson(response.text || '');
+      if (!result || !Array.isArray(result.recomendaciones)) {
+        throw new Error('Respuesta del modelo sin JSON válido');
+      }
       res.json(result);
     } catch (error: any) {
       console.error('Gemini prediction error:', error);
@@ -315,7 +335,7 @@ Sugerir un inventario ideal de salida para cada producto en el catálogo. Retorn
 Establece un nombre de marca elegante en español mexicano, un subtítulo descriptivo, una letra de logotipo (1 o 2 letras), un color hexadecimal primario hermoso que combine, una lista de 4 a 6 productos estrella realistas con precios detallados en centavos (ej: $18.50 pesos es 1850 cents, $100.00 pesos es 10000 cents) y unidades correctas, y una lista de 2 a 3 trabajadores mexicanos en sus respectivas rutas.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: GEMINI_TEXT_MODEL,
         contents: promptString,
         config: {
           systemInstruction: 'Eres "RoutePro Setup Engine", un formateador estructurado que genera configuraciones de negocio instantáneas, profesionales y realistas para dueños de empresas de distribución, mostrador o ventas móviles.',
@@ -360,7 +380,10 @@ Establece un nombre de marca elegante en español mexicano, un subtítulo descri
         }
       });
 
-      const result = JSON.parse((response.text || '{}').trim());
+      const result = safeParseModelJson(response.text || '');
+      if (!result || !result.nombre || !Array.isArray(result.productos)) {
+        throw new Error('Respuesta del modelo sin JSON válido');
+      }
       res.json(result);
     } catch (error: any) {
       console.error('Error generating AI config:', error);
@@ -591,7 +614,7 @@ Tu tarea es usar la herramienta de búsqueda de Google para encontrar informaci�
 Genera un archivo de configuración JSON perfectamente detallado y en español de México.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: GEMINI_TEXT_MODEL,
         contents: promptString,
         config: {
           systemInstruction: 'Eres "RoutePro Web Crawler AI". Buscas de forma confiable información comercial de marcas o restaurantes en base a su URL y produces una configuración de negocio estructurada en formato JSON estricto.',
@@ -637,8 +660,10 @@ Genera un archivo de configuración JSON perfectamente detallado y en español d
         }
       });
 
-      const responseText = response.text || '';
-      const result = JSON.parse(responseText.trim());
+      const result = safeParseModelJson(response.text || '');
+      if (!result || !result.nombre || !Array.isArray(result.productos)) {
+        throw new Error('Respuesta del modelo sin JSON válido');
+      }
       console.log('Result of URL Scraper Config:', result);
       res.json(result);
     } catch (apiError: any) {
@@ -663,7 +688,7 @@ Genera un archivo de configuración JSON perfectamente detallado y en español d
 
         // 1. Utilize Gemini's text model intelligence to craft a beautiful, high-quality, professional logo prompt (chido)
         const promptExpansionResponse = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: GEMINI_TEXT_MODEL,
           contents: `You are an veteran design officer and elite brand identity strategist. 
 Expand the following query into a beautiful, extremely polished, highly detailed English prompt suitable for a modern image-generation model (like gemini-2.5-flash-image) to create a stunning, visually awesome ("bien chido") app logo.
 
@@ -936,7 +961,7 @@ Instrucciones de Respuesta:
 4. Apóyalos con ideas brillantes sobre conciliación diaria, balanceo de saldos de crédito y cómo el Módulo de Verificación de Historial en RoutePro Elite evita fugas de dinero y disputas de cobro.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: GEMINI_TEXT_MODEL,
         contents: contextPrompt,
         config: {
           temperature: 0.7,
